@@ -32,7 +32,7 @@ Go the the directory where you want to install this project and enter `git clone
 
 scBONITA runs using a BASH script that allows you to specify all of your parameters in one place. These BASH scripts are found in the `scBONITA2/scBONITA/bash_scripts` directory. To run using your own data, simply copy the bash file and modify the values.  
 
-Each of the steps for running scBONITA is modular, meaning that you can run the rule determination step first. This means that you dont have to run it all at the same time (although you do need to run it in order).
+Each of the steps for running scBONITA is modular, meaning that you can run the rule determination step first. This means that you don't have to run it all at the same time (although you do need to run it in order). To try this algorithm, test data is available here https://drive.google.com/drive/folders/1Y1tizOup5pICXGntEERqeby8xLiXfn0E?usp=sharing.
 
 You have to run Rule Determination $\rightarrow$ Importance Score $\rightarrow$ Relative Abundance $\rightarrow$ Attractor Analysis, but not at the same time. I recommend running Rule Determination first to make sure your environment and paths are correct.
 
