@@ -207,7 +207,6 @@ def plot_cell_distance_tsne_by_pathway(embedding, combined_df, pathway, cell_dis
 def plot_cell_distance_roc_curve(y_test, y_proba, output_dir):
     """Plots and saves the ROC curve."""
     print("Generating ROC curve...")
-        
     fpr, tpr, _ = roc_curve(y_test, y_proba)
     roc_auc = auc(fpr, tpr)
 
@@ -376,7 +375,6 @@ def plot_cluster_elbow_method(results_df, pathway, organism, output_dir):
 def plot_cluster_roc_curve(y_test, y_proba, output_dir):
     """Plots and saves the ROC curve."""
     print("\tGenerating ROC curve...")
-    
     fpr, tpr, _ = roc_curve(y_test, y_proba)
     roc_auc = auc(fpr, tpr)
 
@@ -581,17 +579,13 @@ def run_cell_distance_analysis():
     print("Evaluating model performance...")
     y_pred = rf_model.predict(X_test)
     y_proba = rf_model.predict_proba(X_test)[:, 1]  # Probability for the positive class (HIV)
-    
-    cell_distance_random_forest_dir = f'{cell_distance_output_dir}/random_forest_cell_distance'
-    if not os.path.exists(cell_distance_random_forest_dir):
-        os.makedirs(cell_distance_random_forest_dir)
 
-    plot_cell_distance_roc_curve(y_test, y_proba, cell_distance_random_forest_dir)
-    plot_cell_distance_pr_curve(y_test, y_proba, cell_distance_random_forest_dir)
+    plot_cell_distance_roc_curve(y_test, y_proba, cell_distance_output_dir)
+    plot_cell_distance_pr_curve(y_test, y_proba, cell_distance_output_dir)
 
     report = classification_report(y_test, y_pred, target_names=['Healthy', 'HIV'], output_dict=True)
     
-    print_classification_report(report, y_test, y_pred, cell_distance_random_forest_dir)
+    print_classification_report(report, y_test, y_pred, cell_distance_output_dir)
 
 def run_cell_cluster_analysis():
     # Create a subdirectory to store cluster distance analysis results

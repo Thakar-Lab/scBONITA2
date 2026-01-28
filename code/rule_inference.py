@@ -34,7 +34,7 @@ class RuleInference:
         self.dataset_name = dataset_name
         self.network_name = network_name
         self.binarize_threshold = binarize_threshold
-        self.max_samples = 15000
+        self.max_samples = 1000
         self.cells = []
 
         # Initialize lists to store information about nodes and connections
@@ -321,44 +321,34 @@ class RuleInference:
 
     # Calculates the inversion rules for each rule based on if the incoming nodes are inhibiting or activating
     def calculate_inversion_rules(self, node_predecessors, node_index):
-        """
-        Calculates the inversion rules for a node based on the graph interactions or signal for each incoming node
-        Parameters
-        ----------
-        node
-
-        Returns
-        -------
-        inversion_rules
-        """
-
         inversion_rules = {}
+
         for incoming_node in list(node_predecessors):
-            edge_attribute = list(self.graph[self.node_list[incoming_node]][self.node_list[node_index]].keys())
+            source = self.node_list[incoming_node]
+            target = self.node_list[node_index]
 
-            # check the 'interaction' edge attribute
-            if "interaction" in edge_attribute:
-                if self.graph[self.node_list[incoming_node]][self.node_list[node_index]]["interaction"] == "i":
-                    inversion_rules[incoming_node] = True
+            if self.graph.is_multigraph():
+                # For MultiGraph or MultiDiGraph
+                edge_dict = self.graph[source][target]
+                # Loop over all parallel edges (e.g., keys 0, 1, 2, etc.)
+                for key, edge_attrs in edge_dict.items():
+                    if not isinstance(edge_attrs, dict):
+                        continue  # skip non-dict entries
+
+                    if edge_attrs.get("interaction") == "i" or edge_attrs.get("signal") == "i":
+                        inversion_rules[incoming_node] = True
+                        break  # no need to check other parallel edges
                 else:
                     inversion_rules[incoming_node] = False
 
-            # check the 'signal' edge attribute
-            elif "signal" in edge_attribute:
-                if self.graph[self.node_list[incoming_node]][self.node_list[node_index]]["signal"] == "i":
-                    inversion_rules[incoming_node] = True
-                else:
-                    inversion_rules[incoming_node] = False
-
-            # for some reason, when I used a modified processed graphml file as a custom graphml file I needed to use this method
             else:
-                for _, value in self.graph[self.node_list[incoming_node]][self.node_list[node_index]].items():
-                    for attribute, value in value.items():
-                        if attribute == "signal" or "interaction":
-                            if value == "i":
-                                inversion_rules[incoming_node] = True
-                            else:
-                                inversion_rules[incoming_node] = False
+                # For simple DiGraph or Graph
+                edge_attrs = self.graph[source][target]
+
+                if edge_attrs.get("interaction") == "i" or edge_attrs.get("signal") == "i":
+                    inversion_rules[incoming_node] = True
+                else:
+                    inversion_rules[incoming_node] = False
 
         return inversion_rules
 
