@@ -64,8 +64,9 @@ if __name__ == '__main__':
             cell_index = np.random.choice(dense_dataset.shape[1])
 
             # Reads in all of the rows for that columns
-            selected_column = np.array([random.choice([0,1]) for _ in dense_dataset[:, cell_index]])
-
+            # selected_column = np.array([random.choice([0,1]) for _ in dense_dataset[:, cell_index]])   #This code is picking random initial states. Comment it out if you are not doing this.
+            selected_column = dense_dataset[:,cell_index] #This code initializes the states based on the expression.  
+            
             # Transposes the list of gene expression into a column
             transposed_random_column = selected_column.reshape(-1,1)
 
