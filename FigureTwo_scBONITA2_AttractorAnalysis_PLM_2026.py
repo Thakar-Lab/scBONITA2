@@ -18,7 +18,6 @@ import math
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import TwoSlopeNorm
 import matplotlib.image as mpimg
-import matplotlib.cm as cm
 
 # -------------------- Utility Functions --------------------
 
@@ -323,6 +322,10 @@ OUTPUT_FILES = {
     "most_traveled_paths": "most_traveled_paths.txt",
     "report_steps_to_attractor": "report_steps_to_attractor.txt",
     "report_normalized_steps": "report_normalized_steps.txt",
+    "weighted_pseudotime_dict": "weighted_pseudotime_dict.pkl",
+    "weighted_pseudotime_dict_txt": "weighted_pseudotime_dict.txt",
+    "dissimilarity_matrix": "dissimilarity_matrix.pkl",
+    "dissimilarity_matrix_info": "dissimilarity_matrix_info.txt",
     "tsne_plot": "t-SNE_Plot_Colored.png",
     "tsne_plot_pseudotime": "t-SNE_Plot_Colored_with_Pseudotime.png",
     "condition_bias_histogram": "Condition_Bias_Histogram.png",
@@ -397,14 +400,9 @@ def main():
     plt.axis('off')
     plt.tight_layout()
     cbar = plt.colorbar(sm, ax=plt.gca(), orientation='vertical', fraction=0.04, pad=0.02)
-    cbar.ax.tick_params(labelsize=18)
-    for label in cbar.ax.get_yticklabels():
-        label.set_fontweight('bold')
-    cbar.set_label("Log2 Fold Change", fontsize=18, fontweight = 'bold')
+    cbar.set_label("Log2 Fold Change", fontsize=18)
     if hasattr(cbar, 'ax'):
         cbar.ax.tick_params(labelsize=18)
-    # Make colorbar outline bold
-    cbar.outline.set_linewidth(2)    
     plt.savefig("Figure2ANetwork.png", dpi=300, bbox_inches='tight')
     plt.show()
     
@@ -432,7 +430,7 @@ def main():
     pos = nx.spring_layout(stg_combined)
     nx.draw(stg_combined, pos, with_labels=True, node_size=500, node_color='lightgray', 
             edge_color='blue', font_size=8, font_color='black', connectionstyle="arc3,rad=0.11")
-    plt.savefig("FigureSTG.png", dpi=300, bbox_inches='tight')
+    plt.savefig("Figure.png", dpi=300, bbox_inches='tight')
     plt.show()
     
     # Read unique states
@@ -498,11 +496,11 @@ def main():
     bars = ax.bar(range(5), sorted_sizes[:5], tick_label=sorted_attractors[:5], color=colors_bars, edgecolor='black', linewidth=2)
     for bar in bars:
         height = bar.get_height()
-        ax.annotate(f'{height}', xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', fontsize=18, fontweight='bold')
+        ax.annotate(f'{height}', xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', fontsize=18)
     ax.set_xticks(range(5))
-    ax.set_xticklabels([f"Attr {i+1}" for i in range(5)], rotation=45, fontsize=18)
-    ax.set_xlabel("Top Attractors", fontsize=18, fontweight='bold')
-    ax.set_ylabel("Number of Cells", fontsize=18, fontweight='bold')
+    ax.set_xticklabels([f"Attractor {attractor}" for attractor in sorted_attractors[:5]], rotation=45, fontsize=18)
+    ax.set_xlabel("Attractors", fontsize=18)
+    ax.set_ylabel("Number of cells going to each attractor", fontsize=18)
     ax.tick_params(axis='both', which='major', labelsize=18)
     for spine in ax.spines.values():
         spine.set_linewidth(2)
@@ -516,8 +514,7 @@ def main():
         for line in f:
             key, value = line.strip().split(':')
             state_genes[int(key.split()[1])] = np.array(list(map(int, value.strip().strip('[]').replace('(', '').replace(')', '').split(','))))
-    
-    # Read gene names from cell trajectory file
+            # Read gene names from cell trajectory file
     current_dir = r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\trajectories\tutorial_dataset_hsa05417\text_files\cell_trajectories"
     print(f"Current directory: {current_dir}")
     cell_trajectory_path = os.path.join(current_dir, "cell_1_trajectory.csv")
@@ -572,8 +569,8 @@ def main():
     
     # Set x-axis labels (attractors)
     ax.set_xticks(range(5))
-    ax.set_xticklabels([f"Attr {i+1}" for i in range(5)], rotation=45, fontsize=18)
-    ax.set_xlabel("Top Attractors", fontsize=18, fontweight='bold')
+    ax.set_xticklabels([f"Attractor {attractor}" for attractor in sorted_attractors[:5]], rotation=45, fontsize=18)
+    ax.set_xlabel("Attractors", fontsize=18)
     
     # Set y-axis labels (genes with importance scores)
     gene_labels_with_scores = []
@@ -586,7 +583,7 @@ def main():
     
     ax.set_yticks(range(len(filtered_gene_names)))
     ax.set_yticklabels(gene_labels_with_scores, fontsize=10)
-    ax.set_ylabel("Selected Genes with Importance Scores", fontsize=18, fontweight = 'bold')
+    ax.set_ylabel("Selected genes with respective importance scores", fontsize=18)
     
     # Add black borders around cells
     for (i, j), val in np.ndenumerate(filtered_matrix):
@@ -609,170 +606,33 @@ def main():
     
     print(f"Genes shown in Figure 2D: {filtered_gene_names}")
 
-    #Figure 2B
-    # Figure 2B: State transition graph for 5th largest attractor
-    if len(sorted_attractors) >= 5:
-        attractor = sorted_attractors[4]  # 5th largest (0-indexed)
+    # Figure 2B: State transition graph for 60th attractor
+    if len(sorted_attractors) >= 60:
+        attractor = sorted_attractors[59]
         attractor_color = 'blue'
         attractor_cells = basins[attractor]
         attractor_trajs = [cleaned_trajectories[cell] for cell in attractor_cells if cell in cleaned_trajectories]
-        
-        # Build graph and track which trajectory each edge belongs to
         G_attractor = nx.DiGraph()
-        edge_to_traj = {}  # Map edges to trajectory index
-        
-        # IMPORTANT: Track all terminal states (attractors) in these trajectories
-        terminal_states = set()
-        
-        for traj_idx, traj in enumerate(attractor_trajs):
-            if len(traj) == 0:
-                continue
-            
-            # Add the last state as a terminal state
-            terminal_states.add(traj[-1])
-            
-            for i in range(len(traj) - 1):
-                edge = (traj[i], traj[i + 1])
-                G_attractor.add_edge(traj[i], traj[i + 1])
-                edge_to_traj[edge] = traj_idx
-            
-            # Add self-loop for attractor state if it exists
-            if len(traj) > 0:
-                final_state = traj[-1]
-                if final_state == attractor or traj.count(final_state) > 1:
-                    G_attractor.add_edge(final_state, final_state)
-        
-        print(f"\nFigure 2B: Attractor {attractor} basin")
-        print(f"Number of trajectories: {len(attractor_trajs)}")
-        print(f"Terminal states found: {terminal_states}")
-        print(f"Expected attractor state: {attractor}")
-        
-        # Verify all trajectories end at the attractor
-        mismatch_count = 0
         for traj in attractor_trajs:
-            if len(traj) > 0 and traj[-1] != attractor:
-                mismatch_count += 1
-                print(f"Warning: Trajectory ends at {traj[-1]} instead of {attractor}")
+            for i in range(len(traj) - 1):
+                G_attractor.add_edge(traj[i], traj[i + 1])
         
-        if mismatch_count > 0:
-            print(f"WARNING: {mismatch_count} trajectories don't end at attractor {attractor}!")
-            print(f"This suggests the basin assignment might be incorrect.")
+        if len(G_attractor) > 0:
+            plt.figure(figsize=(20, 20))
+            pos = nx.kamada_kawai_layout(G_attractor)
+            pos = jitter_positions(pos, jitter=0.15, min_dist=0.08, max_iter=200)
+            labels = {node: f"S{node}" for node in G_attractor.nodes()}
+            nx.draw(
+                G_attractor, pos=pos, with_labels=True, labels=labels, node_size=20000,
+                node_color=attractor_color, edge_color='gray', font_size=50,
+                font_color='white', arrows=True, node_shape='s', width=7)
+            plt.axis('equal')
+            plt.axis('off')
+            plt.tight_layout()
+            plt.savefig("Figure2B.png", dpi=300, bbox_inches='tight')
+            plt.show()
 
-    if len(G_attractor) > 0:
-        plt.figure(figsize=(20, 20))
-        pos = nx.kamada_kawai_layout(G_attractor)
-        pos = jitter_positions(pos, jitter=0.15, min_dist=0.08, max_iter=200)
-        
-        # Identify attractor states (should be the terminal states)
-        attractor_states = terminal_states.copy()
-        
-        # Also check for self-loops
-        for node in G_attractor.nodes():
-            if G_attractor.has_edge(node, node):
-                attractor_states.add(node)
-        
-        print(f"Attractor states to highlight: {attractor_states}")
-        
-        # Move attractor states to center
-        if attractor_states:
-            center = np.array([0.0, 0.0])
-            if len(attractor_states) == 1:
-                # Single attractor - place at exact center
-                attractor_state = list(attractor_states)[0]
-                pos[attractor_state] = center
-            else:
-                # Multiple attractor states - arrange in small circle around center
-                radius = 0.1
-                for i, state in enumerate(attractor_states):
-                    angle = 2 * np.pi * i / len(attractor_states)
-                    pos[state] = center + radius * np.array([np.cos(angle), np.sin(angle)])
-        
-        labels = {node: f"S{node}" for node in G_attractor.nodes()}
-        
-        # Calculate node alphas based on proximity (density)
-        node_alphas = []
-        positions = np.array([pos[node] for node in G_attractor.nodes()])
-        for i, node in enumerate(G_attractor.nodes()):
-            # Calculate distances to all other nodes
-            distances = np.sqrt(np.sum((positions - positions[i])**2, axis=1))
-            # Count nearby nodes (within threshold)
-            nearby = np.sum(distances < 0.2)
-            # More nearby nodes = lower alpha (more transparent)
-            # BUT ensure attractor states are always fully opaque
-            if node in attractor_states:
-                alpha = 1.0
-            else:
-                alpha = max(0.3, 1.0 - (nearby - 1) * 0.05)
-            node_alphas.append(alpha)
-        
-        # Separate regular and attractor nodes
-        regular_nodes = [(node, alpha) for node, alpha in zip(G_attractor.nodes(), node_alphas) if node not in attractor_states]
-        attractor_nodes = [(node, alpha) for node, alpha in zip(G_attractor.nodes(), node_alphas) if node in attractor_states]
-        
-        # STEP 1: Draw regular nodes first
-        for node, alpha in regular_nodes:
-            nx.draw_networkx_nodes(
-                G_attractor, pos, nodelist=[node],
-                node_size=3000, node_color=attractor_color,
-                alpha=alpha, node_shape='s'
-            )
-        
-        # STEP 2: Draw edges
-        num_trajs = len(attractor_trajs)
-        rainbow_colors = cm.rainbow(np.linspace(0, 1, num_trajs))
-        
-        for traj_idx in range(num_trajs):
-            traj_edges = [edge for edge, idx in edge_to_traj.items() if idx == traj_idx]
-            
-            if traj_edges:
-                nx.draw_networkx_edges(
-                    G_attractor, pos, edgelist=traj_edges,
-                    edge_color='black',
-                    width=6, arrows=True, 
-                    arrowsize=40,
-                    arrowstyle='-|>',
-                    connectionstyle='arc3,rad=0.1',
-                    alpha=0.6,
-                    min_source_margin=15,
-                    min_target_margin=15
-                )
-        
-        # STEP 3: Draw regular node labels
-        for node, alpha in regular_nodes:
-            nx.draw_networkx_labels(
-                G_attractor, pos, labels={node: labels[node]},
-                font_size=12, font_color='white',
-                alpha=min(1.0, alpha + 0.2)
-            )
-        
-        # STEP 4: Draw attractor nodes (ON TOP OF EVERYTHING)
-        for node, alpha in attractor_nodes:
-            nx.draw_networkx_nodes(
-                G_attractor, pos, nodelist=[node],
-                node_size=4000,
-                node_color='gold',
-                alpha=1.0,
-                node_shape='s',
-                edgecolors='darkgoldenrod',
-                linewidths=3
-            )
-        
-        # STEP 5: Draw attractor labels (LAST - on top of everything)
-        for node, alpha in attractor_nodes:
-            nx.draw_networkx_labels(
-                G_attractor, pos, labels={node: labels[node]},
-                font_size=14, font_color='black',
-                font_weight='bold',
-                alpha=1.0
-            )
-        
-        plt.axis('equal')
-        plt.axis('off')
-        plt.tight_layout()
-        plt.savefig("Figure2B.png", dpi=300, bbox_inches='tight')
-        plt.show()
-    
-    # Pseudotime calculations
+    # Pseudotime calculations - Simple version (for backward compatibility)
     steps_to_attractor = {state: ((len(clean_trajectory(trajectory)) - clean_trajectory(trajectory).index(state)) - 1)
                           for trajectory in cleaned_trajectories.values()
                           for state in clean_trajectory(trajectory)
@@ -791,13 +651,51 @@ def main():
         for state, steps in normalized_steps_to_attractor.items():
             f.write(f"State {state}: Normalized Steps to Attractor: {steps}\n")
     
-    state_pseudotime_dict = {state: 1 - normalized_steps_to_attractor[state] for state in normalized_steps_to_attractor}
+    # Compute weighted pseudotime using the sophisticated algorithm
+    print("Computing weighted pseudotime and dissimilarity matrix...")
+    weighted_pseudotime_dict, dissimilarity_matrix = compute_weighted_pseudotime(cleaned_trajectories, attractor_value_dict)
+    
+    # Save weighted pseudotime outputs as pkl files
+    with open("weighted_pseudotime_dict.pkl", 'wb') as f:
+        pickle.dump(weighted_pseudotime_dict, f)
+    print("Saved weighted_pseudotime_dict.pkl")
+    
+    with open("dissimilarity_matrix.pkl", 'wb') as f:
+        pickle.dump(dissimilarity_matrix, f)
+    print("Saved dissimilarity_matrix.pkl")
+    
+    # Also save as text files for easy inspection
+    with open("weighted_pseudotime_dict.txt", 'w') as f:
+        for cell, pseudotime in sorted(weighted_pseudotime_dict.items()):
+            f.write(f"{cell}: {pseudotime:.6f}\n")
+    
+    with open("dissimilarity_matrix_info.txt", 'w') as f:
+        f.write(f"Dissimilarity Matrix Shape: {dissimilarity_matrix.shape}\n")
+        f.write(f"Min value: {dissimilarity_matrix.min():.6f}\n")
+        f.write(f"Max value: {dissimilarity_matrix.max():.6f}\n")
+        f.write(f"Mean value: {dissimilarity_matrix.mean():.6f}\n")
+    
+    # Create state-level pseudotime mapping from weighted cell pseudotime
+    # For each state, compute average pseudotime from all cells that pass through it
+    state_weighted_pseudotime = {}
+    for state_label in state_labels:
+        state_num = int(state_label.split()[1])
+        cells_with_state = [cell for cell, traj in cleaned_trajectories.items() if state_num in traj]
+        if cells_with_state:
+            avg_pseudotime = np.mean([weighted_pseudotime_dict.get(cell, 0) for cell in cells_with_state])
+            state_weighted_pseudotime[state_num] = avg_pseudotime
+        else:
+            state_weighted_pseudotime[state_num] = 0
+    
+    # Use weighted pseudotime for visualization
     state_vector_with_pseudotime = np.array([
-        np.array(unique_states[i]) * (1 - normalized_steps_to_attractor.get(i, 0))
+        np.array(unique_states[i]) * state_weighted_pseudotime.get(int(state_labels[i].split()[1]), 0)
         for i in range(len(unique_states))
     ])
     
-    tsne_results = plot_tsne(state_vector_with_pseudotime, "t-SNE Plot of Unique States with Pseudotime", "t-SNE_Plot_Colored_with_Pseudotime.png", marker='s')
+    print(f"Weighted pseudotime range: {min(weighted_pseudotime_dict.values()):.4f} to {max(weighted_pseudotime_dict.values()):.4f}")
+    
+    tsne_results = plot_tsne(state_vector_with_pseudotime, "t-SNE Plot of Unique States with Weighted Pseudotime", "t-SNE_Plot_Colored_with_Pseudotime.png", marker='s')
     
     # Figure 2E: 3D t-SNE plot with transitions
     fig = plt.figure(figsize=(12, 10))
@@ -810,14 +708,31 @@ def main():
     spread_factor = 5.0
     tsne_results_3d = tsne_results_3d * spread_factor
     
+    # Debug: Print state information
+    print(f"Total unique states: {len(state_labels)}")
+    print(f"State labels sample: {state_labels[:10]}")
+    
+    # Check for states in trajectories that might not be in state_labels
+    all_traj_states = set()
+    for traj in cleaned_trajectories.values():
+        all_traj_states.update(traj)
+    
+    state_numbers_in_labels = {int(s.split()[1]) for s in state_labels}
+    missing_states = all_traj_states - state_numbers_in_labels
+    
+    if missing_states:
+        print(f"Warning: {len(missing_states)} states in trajectories are not in state_labels: {sorted(missing_states)}")
+    
     ax = fig.add_subplot(111, projection='3d')
     
-    # Plot states colored by pseudotime
+    # Plot states colored by weighted pseudotime
     for i, state in enumerate(state_labels):
         state_index = int(state.split()[1])
-        color = plt.cm.coolwarm(1 - normalized_steps_to_attractor.get(state_index, 0))
+        # Use weighted pseudotime for coloring
+        pseudotime_value = state_weighted_pseudotime.get(state_index, 0)
+        color = plt.cm.coolwarm(pseudotime_value)
         ax.scatter(tsne_results_3d[i, 0], tsne_results_3d[i, 1], tsne_results_3d[i, 2], 
-                   color=color, alpha=0.6, label=f"State {state_index}", marker='s', edgecolors='none', s=100)
+                   color=color, alpha=1, label=f"State {state_index}", marker='s', edgecolors='none', s=100)
     
     # Set axis limits
     x_min, x_max = np.min(tsne_results_3d[:, 0]), np.max(tsne_results_3d[:, 0])
@@ -827,121 +742,63 @@ def main():
     ax.set_ylim(y_min, y_max)
     ax.set_zlim(z_min, z_max)
 
-    ax.view_init(elev=15, azim=-110)
+    # FIXED: Set tick positions and labels correctly
+    x_ticks = np.arange(int(x_min), int(x_max) + 1, 50)
+    y_ticks = np.arange(int(y_min), int(y_max) + 1, 50)
+    z_ticks = np.arange(int(z_min), int(z_max) + 1, 50)
+    
+    ax.set_xticks(x_ticks)
+    ax.set_yticks(y_ticks)
+    ax.set_zticks(z_ticks)
+    
+    ax.set_xticklabels([f'{int(x)}' for x in x_ticks], fontsize=12)
+    ax.set_yticklabels([f'{int(y)}' for y in y_ticks], fontsize=12)
+    ax.set_zticklabels([f'{int(z)}' for z in z_ticks], fontsize=12)
 
-    # Find attractor coordinates in 3D t-SNE space
-    print("\nFinding attractor coordinates in 3D...")
-    attractor_coordinates_3d = {}
+    ax.view_init(elev=15, azim=-20)
+    
+    # Create state index mapping for transition vectors
+    state_idx_map = {int(s.split()[1]): idx for idx, s in enumerate(state_labels)}
 
-    # Get indices where pseudotime = 0 (attractors)
-    indices_pseudotime_0 = [
-        i for i, state in enumerate(state_labels)
-        if normalized_steps_to_attractor.get(int(state.split()[1]), 0) == 0
-    ]
-
-    for i in indices_pseudotime_0:
-        state_index = int(state_labels[i].split()[1])
-        x, y, z = tsne_results_3d[i, 0], tsne_results_3d[i, 1], tsne_results_3d[i, 2]
-        attractor_coordinates_3d[state_index] = (x, y, z)
-
-    print(f"Identified {len(attractor_coordinates_3d)} attractor coordinates in 3D")
-
-    # # Draw attractors with MUCH LARGER markers and labels
-    attractor_locations = {}
-    label_positions = []
-
-    for idx, attractor in enumerate(sorted_attractors[:5]):  # Top 5 attractors
-        rank = idx + 1
-        attractor_cells = basins[attractor]
-        
-        # attractor is already an integer state index - use it directly
-        if attractor not in attractor_coordinates_3d:
-            print(f"Warning: Attractor {rank} (state {attractor}) missing 3D coordinates → skipped.")
-            continue
-
-        text_x, text_y, text_z = attractor_coordinates_3d[attractor]
-        attractor_locations[attractor] = (text_x, text_y, text_z)
-
-        # Plot a VERY LARGE gold square
-        ax.scatter(
-            [text_x], [text_y], [text_z],
-            marker='s',
-            s=2000,
-            facecolors='gold',
-            edgecolors='black',
-            linewidths=3,
-            alpha=1.0,
-            depthshade=False
-        )
-
-        label_positions.append((text_x, text_y, text_z, rank))
-
-        print(
-            f"Attractor {rank}: (State idx {attractor}) "
-            f"Position=({text_x:.2f}, {text_y:.2f}, {text_z:.2f}), "
-            f"Basin size={len(attractor_cells)}"
-        )
-
-    # ----------------------------------------------------------
-    # Add labels with simple overlap avoidance
-    # ----------------------------------------------------------
-    # for i, (x, y, z, rank) in enumerate(label_positions):
-    #     offset_x, offset_y, offset_z = 0, 0, 0
-
-    #     # Push labels apart if they're too close
-    #     for j, (ox, oy, oz, other_rank) in enumerate(label_positions):
-    #         if i == j:
-    #             continue
-    #         dist = np.sqrt((x - ox)**2 + (y - oy)**2 + (z - oz)**2)
-            
-    #         if dist < 10:  # If closer than 10 units
-    #             # Push away from the other label
-    #             direction = np.array([x - ox, y - oy, z - oz])
-    #             if np.linalg.norm(direction) > 0:
-    #                 direction = direction / np.linalg.norm(direction)
-    #                 offset_x += direction[0] * 5
-    #                 offset_y += direction[1] * 5
-    #                 offset_z += direction[2] * 5
-    # ----------------------------------------------------------
-    # Check distances between all pairs to identify overlaps
-    # ----------------------------------------------------------
-    print("\nDistances between attractors:")
-    for i in range(len(label_positions)):
-        for j in range(i+1, len(label_positions)):
-            x1, y1, z1, rank1 = label_positions[i]
-            x2, y2, z2, rank2 = label_positions[j]
-            dist = np.sqrt((x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2)
-            print(f"  Attr {rank1} <-> Attr {rank2}: distance = {dist:.2f}")
-
-    #----------------------------------------------------------
-    #Manual offsets for each attractor (adjust based on distances above)
-    #----------------------------------------------------------
-    manual_offsets = {
-    1: (0, 0, 0),       # Far from others, no offset needed
-    2: (0, 0, 0),       # Far from others, no offset needed
-    3: (-10, -5, 10),   # Move left, down, and forward
-    4: (10, 5, -10),    # Move right, up, and back (opposite of 3)
-    5: (0, 0, 0),       # Far from others, no offset needed
-    }
-
-    # Add labels with manual offsets
-    for i, (x, y, z, rank) in enumerate(label_positions):
-        offset_x, offset_y, offset_z = manual_offsets.get(rank, (0, 0, 0))
-        
-        ax.text(
-            x + offset_x,
-            y + offset_y,
-            z + offset_z,
-            f"Attr {rank}",
-            fontsize=18,
-            fontweight='bold',
-            color='black',
-            ha='center',
-            va='center',
-            bbox=dict(facecolor='white', alpha=0.95, edgecolor='black', linewidth=2, pad=3),
-            zorder=10000
-        )    
-        print(f"\nLabeled {len(label_positions)} attractors")
+    # Add transition vectors with error handling
+    if cleaned_trajectories:
+        for traj in cleaned_trajectories.values():
+            for i in range(len(traj) - 1):
+                s1 = traj[i]
+                s2 = traj[i + 1]
+                # Check if both states exist in the mapping
+                if s1 in state_idx_map and s2 in state_idx_map:
+                    idx1 = state_idx_map[s1]
+                    idx2 = state_idx_map[s2]
+                    # Verify indices are within bounds
+                    if 0 <= idx1 < len(tsne_results_3d) and 0 <= idx2 < len(tsne_results_3d):
+                        start = tsne_results_3d[idx1]
+                        end = tsne_results_3d[idx2]
+                        vector = end - start
+                        ax.quiver(start[0], start[1], start[2],
+                                  vector[0], vector[1], vector[2], 
+                                  length=8.0,   
+                                  color='grey', alpha=0.5, arrow_length_ratio=2, linewidth=2,
+                                  normalize=True)
+                else:
+                    # Log missing states for debugging
+                    if s1 not in state_idx_map:
+                        print(f"Warning: State {s1} not found in state_idx_map")
+                    if s2 not in state_idx_map:
+                        print(f"Warning: State {s2} not found in state_idx_map")
+    
+    # Set pane linewidths for 3D axes
+    try:
+        ax.xaxis.set_pane_linewidth(4)
+        ax.yaxis.set_pane_linewidth(4)
+        ax.zaxis.set_pane_linewidth(4)
+    except AttributeError:
+        try:
+            ax.xaxis.pane.set_linewidth(4)
+            ax.yaxis.pane.set_linewidth(4)
+            ax.zaxis.pane.set_linewidth(4)
+        except Exception:
+            pass
 
     for axis in [ax.w_xaxis, ax.w_yaxis, ax.w_zaxis] if hasattr(ax, 'w_xaxis') else [ax.xaxis, ax.yaxis, ax.zaxis]:
         try:
@@ -954,24 +811,22 @@ def main():
 
     for line in ax.get_lines():
         line.set_linewidth(2)
-        
-    ax.set_xlabel("t-SNE Component 1", fontsize=18, fontweight='bold', labelpad=15)
-    ax.set_ylabel("t-SNE Component 2", fontsize=18, fontweight='bold', labelpad=15)
-    ax.set_zlabel("t-SNE Component 3", fontsize=18, fontweight='bold', labelpad=15)
-        
+    
+    ax.set_xlabel("t-SNE Component 1", fontsize=18, labelpad=15)
+    ax.set_ylabel("t-SNE Component 2", fontsize=18, labelpad=15)
+    ax.set_zlabel("t-SNE Component 3", fontsize=18, labelpad=15)
+    
     ax.tick_params(axis='both', which='major', labelsize=18)
     ax.tick_params(axis='z', which='major', labelsize=18)
-        
-    # Add colorbar with bold labels and ticks
+    plt.tight_layout()
+    
+    # Add colorbar
     sm = plt.cm.ScalarMappable(cmap='coolwarm', norm=plt.Normalize(vmin=0, vmax=1))
     sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax, label="Normalized Pseudotime", shrink=0.5, pad=0)
+    cbar = fig.colorbar(sm, ax=ax, label="Weighted Pseudotime", shrink=0.5)
     cbar.ax.tick_params(labelsize=18)
-    for label in cbar.ax.get_yticklabels():
-        label.set_fontweight('bold')
-    cbar.set_label("Normalized Pseudotime", fontsize=18, fontweight='bold')
+    cbar.set_label("Weighted Pseudotime", fontsize=18)
     
-    plt.tight_layout()
     plt.savefig("Figure2E.png", dpi=300, bbox_inches='tight')
     plt.show()
 
