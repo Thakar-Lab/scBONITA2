@@ -112,7 +112,7 @@ def save_results(output_dir: Path, columns_dict: dict, trajectory_dict: dict,
     
     # Save trajectories
     with open(output_dir / "Combined_Trajectory.txt", 'w') as f:
-        sorted_keys = sorted(trajectory_dict.keys(), key=lambda x: int(x.split('_')[1]))
+        sorted_keys = sorted(trajectory_dict.keys())
         for key in sorted_keys:
             f.write(f"{key}: {trajectory_dict[key]}\n")
     
@@ -280,3 +280,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
