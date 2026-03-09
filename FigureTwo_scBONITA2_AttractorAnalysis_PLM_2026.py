@@ -1,3 +1,15 @@
+"""
+Trajectory Analysis Script by Pancy Lwin-Munger
+2025
+Used for the publication - Harnessing the single-cell RNA seq data for digital twins
+
+Analyzes cell trajectory data from CSV files, computes state statistics,
+and generates t-SNE visualizations.
+
+Updated to use full cell barcodes (e.g. CAAGATCCAATGTTGC.Participant_6) 
+instead of integer cell indices for all cell identity mapping.
+"""
+
 import os
 import re
 import pickle
@@ -19,18 +31,47 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.colors import TwoSlopeNorm
 import matplotlib.image as mpimg
 
+
 # -------------------- Utility Functions --------------------
 
 def load_pickle(file_path):
     with open(file_path, 'rb') as file:
         return pickle.load(file)
 
+
 def read_trajectories(file_path):
+    """
+    Read trajectories from Combined_Trajectory.txt.
+    Keys are full cell barcodes (e.g. 'cell_CAAGATCCAATGTTGC.Participant_6_trajectory').
+    """
+    trajectories = {}
     with open(file_path, 'r') as file:
-        return {
-            cell.strip(): list(map(int, traj.strip().strip('[]').split(',')))
-            for cell, traj in (line.strip().split(':') for line in file)
-        }
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+            # Split on first ':' only to preserve barcodes containing ':'
+            colon_idx = line.index(':')
+            cell = line[:colon_idx].strip()
+            traj_str = line[colon_idx + 1:].strip()
+            traj = list(map(int, traj_str.strip('[]').split(',')))
+            trajectories[cell] = traj
+    return trajectories
+
+
+def extract_barcode_from_cell_key(cell_key):
+    """
+    Extracts the barcode from a cell key like 'cell_CAAGATCCAATGTTGC.Participant_6_trajectory'
+    Returns 'CAAGATCCAATGTTGC.Participant_6'
+    """
+    # Remove 'cell_' prefix and '_trajectory' suffix if present
+    barcode = cell_key
+    if barcode.startswith('cell_'):
+        barcode = barcode[5:]
+    if barcode.endswith('_trajectory'):
+        barcode = barcode[:-11]
+    return barcode
+
 
 def clean_trajectory(trajectory):
     cleaned, seen = [], set()
@@ -40,6 +81,7 @@ def clean_trajectory(trajectory):
         cleaned.append(state)
         seen.add(state)
     return cleaned
+
 
 def find_attractors(trajectory):
     visited = {}
@@ -52,16 +94,19 @@ def find_attractors(trajectory):
         visited[state] = i
     return trajectory[-1], [], trajectory[-1], trajectory[0]
 
+
 def plot_stg(trajectories):
     stg = nx.DiGraph()
     for cell, traj in trajectories.items():
         if len(set(traj)) == 1:
             continue
+        barcode = extract_barcode_from_cell_key(cell)
         for i in range(len(traj) - 1):
             stg.add_edge(traj[i], traj[i + 1])
             label = stg[traj[i]][traj[i + 1]].get('label', '')
-            stg[traj[i]][traj[i + 1]]['label'] = f"{label}, {cell.split('_')[1]}".strip(', ')
+            stg[traj[i]][traj[i + 1]]['label'] = f"{label}, {barcode}".strip(', ')
     return stg
+
 
 def plot_tsne(data, title, filename, marker):
     tsne_results = TSNE(n_components=2, random_state=24, perplexity=150).fit_transform(data)
@@ -73,6 +118,7 @@ def plot_tsne(data, title, filename, marker):
     plt.show()
     return tsne_results
 
+
 def plot_tsne_3d(data, title, filename, marker):
     tsne_results = TSNE(n_components=3, random_state=24, perplexity=150).fit_transform(data)
     plt.figure()
@@ -82,6 +128,7 @@ def plot_tsne_3d(data, title, filename, marker):
     plt.ylabel("t-SNE Component 2")
     plt.show()
     return tsne_results
+
 
 def plot_3d_surface(tsne_results, z, title, filename):
     fig = plt.figure()
@@ -98,6 +145,7 @@ def plot_3d_surface(tsne_results, z, title, filename):
     ax.set_zlabel("State Probability")
     plt.show()
 
+
 def calculate_similarity_matching(*arrays):
     max_length = max(len(arr) for arr in arrays)
     padded_arrays = []
@@ -111,6 +159,7 @@ def calculate_similarity_matching(*arrays):
     stacked = np.vstack(padded_arrays)
     matching = np.all(stacked == stacked[0], axis=0).sum()
     return matching / max_length
+
 
 def find_most_traveled_paths(basins, trajectories, output_file="most_traveled_paths.txt"):
     most_traveled_paths = {}
@@ -138,6 +187,7 @@ def find_most_traveled_paths(basins, trajectories, output_file="most_traveled_pa
                 f.write(f"Attractor {attractor}: no paths recorded\n")
     return most_traveled_paths
 
+
 def compute_state_and_cell_transition_matrices(cleaned_trajectories, state_dict, trajectories):
     unique_states = [state_dict[key] for key in sorted(state_dict.keys(), key=lambda x: int(x.split()[1]))]
     num_states = len(unique_states)
@@ -163,23 +213,30 @@ def compute_state_and_cell_transition_matrices(cleaned_trajectories, state_dict,
     for i in range(num_cells):
         for j in range(num_cells):
             if i != j:
-                cell_transition_matrix[i, j] = np.sum(state_occupancy[i, :] * state_transition_matrix @ state_occupancy[j, :])
+                cell_transition_matrix[i, j] = np.sum(
+                    state_occupancy[i, :] * state_transition_matrix @ state_occupancy[j, :])
     row_sums_cell = cell_transition_matrix.sum(axis=1, keepdims=True)
     non_zero_rows_cell = row_sums_cell.flatten() != 0
     if non_zero_rows_cell.any():
         cell_transition_matrix[non_zero_rows_cell] /= row_sums_cell[non_zero_rows_cell]
     return state_transition_matrix, state_occupancy, cell_transition_matrix, weighted_transition_matrix
 
+
 def generalized_jaccard_similarity(arr1, arr2):
     arr1, arr2 = np.array(arr1), np.array(arr2)
     matching = np.sum(arr1 == arr2)
     return matching / len(arr1)
 
+
 def compute_weighted_pseudotime(trajectories, attractor_value_dict):
+    """
+    attractor_value_dict now uses full barcode strings as keys instead of integer indices.
+    """
     pseudotime_dict, max_observed_steps_dict, observed_steps_dict, shortest_path_length_dict = {}, {}, {}, {}
     trajectory_keys = list(trajectories.keys())
     dissimilarity_matrix = np.zeros((len(trajectory_keys), len(trajectory_keys)))
     unique_attractors = set()
+
     for cell, trajectory in trajectories.items():
         cleaned_trajectory = clean_trajectory(trajectory)
         single_attractor, cyclic_attractor, attractor_state, initial_state = find_attractors(cleaned_trajectory)
@@ -187,8 +244,10 @@ def compute_weighted_pseudotime(trajectories, attractor_value_dict):
         observed_steps = cleaned_trajectory.index(attractor) + 1
         observed_steps_dict[cell] = observed_steps
         unique_attractors.add(attractor)
+
     max_observed_steps = max(observed_steps_dict.values())
     min_observed_steps = min(observed_steps_dict.values())
+
     for cell, observed_steps in observed_steps_dict.items():
         max_observed_steps_dict[cell] = max_observed_steps
         shortest_path_length_dict[cell] = min_observed_steps
@@ -197,14 +256,19 @@ def compute_weighted_pseudotime(trajectories, attractor_value_dict):
         else:
             pseudotime = 0
         pseudotime_dict[cell] = pseudotime
+
     sorted_attractors = sorted(unique_attractors)
+
     for i, cell in enumerate(trajectory_keys):
         cleaned_trajectory = clean_trajectory(trajectories[cell])
         attractor = find_attractors(cleaned_trajectory)[0] or find_attractors(cleaned_trajectory)[1][0]
+        barcode = extract_barcode_from_cell_key(cell)
+
         for j, cell2 in enumerate(trajectory_keys):
             if i == j:
                 dissimilarity_matrix[i, j] = 0
                 continue
+            barcode2 = extract_barcode_from_cell_key(cell2)
             cleaned_trajectory2 = clean_trajectory(trajectories[cell2])
             basins = {att: [c for c, traj in trajectories.items() if att in traj] for att in unique_attractors}
             most_traveled_paths = find_most_traveled_paths(basins, trajectories)
@@ -220,8 +284,10 @@ def compute_weighted_pseudotime(trajectories, attractor_value_dict):
                 similarity_weight2_ijl = calculate_similarity_matching(padded_cleaned_trajectory, padded_most_traveled_path) if cleaned_trajectory in most_traveled_path else calculate_similarity_matching(padded_cleaned_trajectory2, padded_most_traveled_path)
             else:
                 similarity_weight2_ijl = similarity_weight1_ij
-            attractor1 = attractor_value_dict.get(int(cell.split('_')[1]), [])
-            attractor2 = attractor_value_dict.get(int(cell2.split('_')[1]), [])
+
+            # Use barcode as key into attractor_value_dict
+            attractor1 = attractor_value_dict.get(barcode, [])
+            attractor2 = attractor_value_dict.get(barcode2, [])
             similarity_weight3_ij = calculate_similarity_matching(attractor1, attractor2)
             attractor3 = attractor_value_dict.get(sorted_attractors[0], [])
             similarity_weight4_ijk = 1 if attractor1 == attractor3 or attractor2 == attractor3 else calculate_similarity_matching(attractor1, attractor2, attractor3)
@@ -237,49 +303,60 @@ def compute_weighted_pseudotime(trajectories, attractor_value_dict):
             if similarity_weight1_ij == 1:
                 distance_score = 0
             dissimilarity_matrix[i, j] = distance_score
+
     return pseudotime_dict, dissimilarity_matrix
 
+
 def attractor_ASplus_minus_analysis(attractor_value_to_check, cell_attractor_file, metadata_file):
+    """
+    Updated to use barcode-based cell identity mapping instead of integer row index.
+    Metadata file is expected to have columns: [index, barcode, group]
+    """
     as_plus_count = 0
     as_minus_count = 0
     total_cells = 0
+
+    # Load metadata and build barcode -> group mapping
     metadata = pd.read_csv(metadata_file, sep=" ", header=None).reset_index(drop=True)
+    # Column 1 = barcode, Column 2 = group
+    barcode_to_group = dict(zip(metadata.iloc[:, 1].astype(str), metadata.iloc[:, 2].astype(str)))
+
     with open(cell_attractor_file, 'r') as f:
         lines = f.readlines()
-    as_plus_indices, as_minus_indices = [], []
+
+    as_plus_barcodes, as_minus_barcodes = [], []
+
     for line in lines:
         match = re.search(r"Attractor:\s*(\d+),", line)
         if match:
             attractor_value = int(match.group(1))
             if attractor_value == attractor_value_to_check:
                 total_cells += 1
-                cell_num_trajectory = line.split(':')[0].split('_')[1]
-                cell_state = metadata.iloc[int(cell_num_trajectory), 2]
+                # Extract full cell key (everything before the first ':')
+                cell_key = line.split(':')[0].strip()
+                barcode = extract_barcode_from_cell_key(cell_key)
+                cell_state = barcode_to_group.get(barcode, None)
+
                 if cell_state == "AS+":
                     as_plus_count += 1
-                    as_plus_indices.append(cell_num_trajectory)
+                    as_plus_barcodes.append(barcode)
                 elif cell_state == "AS-":
                     as_minus_count += 1
-                    as_minus_indices.append(cell_num_trajectory)
+                    as_minus_barcodes.append(barcode)
+                else:
+                    print(f"Warning: barcode '{barcode}' not found in metadata")
+
     if total_cells > 0:
         as_plus_percentage = (as_plus_count / total_cells) * 100
         as_minus_percentage = (as_minus_count / total_cells) * 100
     else:
         as_plus_percentage = 0
         as_minus_percentage = 0
-    return as_plus_count, as_minus_count, total_cells, as_plus_percentage, as_minus_percentage, as_plus_indices, as_minus_indices
+
+    return as_plus_count, as_minus_count, total_cells, as_plus_percentage, as_minus_percentage, as_plus_barcodes, as_minus_barcodes
+
 
 def jitter_positions(pos, jitter=0.01, min_dist=0.05, max_iter=100):
-    """
-    Jitter node positions to reduce overlap.
-    Args:
-        pos: dict of node positions {node: (x, y)}
-        jitter: float, base jitter to apply
-        min_dist: float, minimum allowed distance between nodes
-        max_iter: int, maximum number of jittering iterations
-    Returns:
-        dict of adjusted positions
-    """
     nodes = list(pos.keys())
     coords = np.array([pos[n] for n in nodes])
     for _ in range(max_iter):
@@ -288,7 +365,6 @@ def jitter_positions(pos, jitter=0.01, min_dist=0.05, max_iter=100):
             for j in range(i + 1, len(nodes)):
                 dist = np.linalg.norm(coords[i] - coords[j])
                 if dist < min_dist:
-                    # Move nodes apart
                     direction = coords[i] - coords[j]
                     if np.all(direction == 0):
                         direction = np.random.randn(2)
@@ -301,18 +377,18 @@ def jitter_positions(pos, jitter=0.01, min_dist=0.05, max_iter=100):
     return {n: tuple(coords[i]) for i, n in enumerate(nodes)}
 
 
-# -------------------- Main Function -------------------------------------------------------------------------------------------
-# -------------------- Input and Output Files ----------------------------------------------------------------------------------
+# -------------------- Main Function --------------------
+
 INPUT_FILES = {
     "trajectories": "Combined_Trajectory.txt",
     "unique_states": "Combined_Unique_States.txt",
-    "cell_trajectory": "cell_1_trajectory.csv",
     "metadata": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\input\tutorial_data\combined_metadata.txt",
     "importance_scores": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\importance_score_output\tutorial_dataset\text_files\hsa05417_importance_score.txt",
     "knockout_results": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\importance_score_output\tutorial_dataset\intermediate_files\hsa05417\knockout_results_{gene}.pkl",
     "knockin_results": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\importance_score_output\tutorial_dataset\intermediate_files\hsa05417\knockin_results_{gene}.pkl",
     "network": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\graphml_files\tutorial_dataset\hsa05417_processed.graphml",
-    "foldchange": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\relative_abundance_output\tutorial_dataset\AS+_vs_AS-\text_files\hsa05417_tutorial_dataset_AS+_vs_AS-_relative_abundance.txt"
+    "foldchange": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\relative_abundance_output\tutorial_dataset\AS+_vs_AS-\text_files\hsa05417_tutorial_dataset_AS+_vs_AS-_relative_abundance.txt",
+    "cell_trajectories_dir": r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\trajectories\tutorial_dataset_hsa05417\text_files\cell_trajectories"
 }
 
 OUTPUT_FILES = {
@@ -335,6 +411,7 @@ OUTPUT_FILES = {
     "condition_bias_histogram_ko": "Condition_Bias_Histogram_Perturbed_KO_{gene}.png",
 }
 
+
 def main():
     # Load importance scores
     gene_names = []
@@ -349,18 +426,18 @@ def main():
                     gene_names.append(gene)
                 except ValueError:
                     print(f"Warning: Could not convert score '{score}' for gene '{gene}' to float. Skipping.")
-    
+
     print(f"Loaded importance scores for {len(importance_scores)} genes.")
     print(f"Importance scores: {importance_scores[:10]}...")
-    
-    # Print top thirty important genes
+
+    # Print top 30 important genes
     top_30_indices = np.argsort(importance_scores)[-30:][::-1]
     print("Top 30 important genes and their scores:")
     for idx in top_30_indices:
         gene = gene_names[idx] if idx < len(gene_names) else f"Gene_{idx}"
         score = importance_scores[idx]
         print(f"{gene}: {score:.4f}")
-    
+
     # Read fold change values
     foldchange_dict = {}
     with open(INPUT_FILES["foldchange"]) as f:
@@ -380,7 +457,7 @@ def main():
     node_multiplier = 1
     node_sizes = [300 + 7000 * (importance_scores[gene_names.index(n)] / max(importance_scores)) if n in gene_names else 300 for n in node_list]
     node_sizes = np.array(node_sizes) * node_multiplier
-    
+
     log_fold_changes = np.array([foldchange_dict.get(n, 0) for n in node_list])
     log_fold_changes = np.clip(log_fold_changes, -1.5, 1.5)
     print(f"Log fold changes (first 10): {log_fold_changes[:10]}")
@@ -391,7 +468,7 @@ def main():
     node_colors = [cmap(norm(val)) for val in log_fold_changes]
 
     plt.figure(figsize=(10, 7.5))
-    pos = nx.spring_layout(G, seed=42, k=1.2)  
+    pos = nx.spring_layout(G, seed=42, k=1.2)
     nx.draw_networkx_nodes(G, pos, nodelist=node_list, node_size=node_sizes, node_color=node_colors)
     nx.draw_networkx_edges(G, pos, edge_color='gray', alpha=1.0, arrows=True, arrowsize=40, arrowstyle='-|>')
     nx.draw_networkx_labels(G, pos, labels={n: n for n in node_list}, font_size=12, font_color='black')
@@ -405,17 +482,17 @@ def main():
         cbar.ax.tick_params(labelsize=18)
     plt.savefig("Figure2ANetwork.png", dpi=300, bbox_inches='tight')
     plt.show()
-    
+
     print("Top 10 node sizes and their corresponding genes:")
     top_10_size_indices = np.argsort(node_sizes)[-10:][::-1]
     for idx in top_10_size_indices:
         gene = node_list[idx] if idx < len(node_list) else f"Gene_{idx}"
         size = node_sizes[idx]
         print(f"{gene}: {size:.2f}")
-    
-    # Read trajectories
+
+    # Read trajectories — keys are full cell barcode strings
     trajectories = read_trajectories(INPUT_FILES["trajectories"])
-    
+
     # Clean and save trajectories
     cleaned_trajectories = {}
     with open("cleaned_trajectory.txt", 'w') as f:
@@ -423,31 +500,32 @@ def main():
             cleaned_trajectory = clean_trajectory(value)
             cleaned_trajectories[key] = cleaned_trajectory
             f.write(f"{key}: {cleaned_trajectory}\n")
-    
+
     # Plot state transition graph
     stg_combined = plot_stg(trajectories)
     plt.figure(figsize=(10, 8))
     pos = nx.spring_layout(stg_combined)
-    nx.draw(stg_combined, pos, with_labels=True, node_size=500, node_color='lightgray', 
+    nx.draw(stg_combined, pos, with_labels=True, node_size=500, node_color='lightgray',
             edge_color='blue', font_size=8, font_color='black', connectionstyle="arc3,rad=0.11")
     plt.savefig("Figure.png", dpi=300, bbox_inches='tight')
     plt.show()
-    
+
     # Read unique states
     with open("Combined_Unique_States.txt", 'r') as f:
-        columns_dict = {key.strip(): list(map(int, value.strip().strip('[]').replace('(', '').replace(')', '').split(','))) 
-                       for key, value in (line.strip().split(':') for line in f)}
+        columns_dict = {key.strip(): list(map(int, value.strip().strip('[]').replace('(', '').replace(')', '').split(',')))
+                        for key, value in (line.strip().split(':') for line in f)}
 
     unique_states = list(columns_dict.values())
     state_labels = list(columns_dict.keys())
     data = np.array(unique_states)
     tsne_results = plot_tsne(data, "t-SNE Plot of Unique States", "t-SNE_Plot_Colored.png", marker='s')
 
-    # Find attractors
+    # Find attractors — attractor_value_dict keyed by barcode string
     attractors = {}
     attractor_value_dict = {}
     with open("cell_and_attractor.txt", 'w') as f:
         for cell, trajectory in trajectories.items():
+            barcode = extract_barcode_from_cell_key(cell)
             cleaned_trajectory = clean_trajectory(trajectory)
             single_attractor, cyclic_attractor, attractor_state, _ = find_attractors(cleaned_trajectory)
             attractor = single_attractor if single_attractor is not None else cyclic_attractor[0]
@@ -458,11 +536,11 @@ def main():
             if formatted_attractor_state in columns_dict:
                 attractor_value = columns_dict[formatted_attractor_state]
                 f.write(f"{cell}: {trajectory} -> Attractor: {attractor_state}, Value: {attractor_value}\n")
-                attractor_value_dict[int(cell.split('_')[1])] = attractor_value
+                attractor_value_dict[barcode] = attractor_value  # keyed by barcode
             else:
                 f.write(f"{cell}: {trajectory} -> Attractor: {attractor_state}\n")
-                attractor_value_dict[int(cell.split('_')[1])] = attractor_state
-    
+                attractor_value_dict[barcode] = attractor_state
+
     with open("attractor_value_dict.txt", 'w') as f:
         print(attractor_value_dict, file=f)
 
@@ -471,12 +549,13 @@ def main():
     unique_attractors = list(attractors.keys())
     colors = plt.cm.jet(np.linspace(0, 1, len(unique_attractors)))
     attractor_colors = {attractor: colors[i] for i, attractor in enumerate(unique_attractors)}
-    
+
     fig2 = plt.figure()
     for i, state in enumerate(state_labels):
         state_index = int(state.split()[1])
         color = attractor_colors.get(state_index, 'gray')
-        plt.scatter(tsne_results[i, 0], tsne_results[i, 1], color=color, alpha=0.8, label=f"Attractor {state_index}", marker='s')
+        plt.scatter(tsne_results[i, 0], tsne_results[i, 1], color=color, alpha=0.8,
+                    label=f"Attractor {state_index}", marker='s')
     plt.title("t-SNE Plot of Unique States Colored by Attractors")
     plt.xlabel("t-SNE Component 1")
     plt.ylabel("t-SNE Component 2")
@@ -496,7 +575,8 @@ def main():
     bars = ax.bar(range(5), sorted_sizes[:5], tick_label=sorted_attractors[:5], color=colors_bars, edgecolor='black', linewidth=2)
     for bar in bars:
         height = bar.get_height()
-        ax.annotate(f'{height}', xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3), textcoords="offset points", ha='center', va='bottom', fontsize=18)
+        ax.annotate(f'{height}', xy=(bar.get_x() + bar.get_width() / 2, height), xytext=(0, 3),
+                    textcoords="offset points", ha='center', va='bottom', fontsize=18)
     ax.set_xticks(range(5))
     ax.set_xticklabels([f"Attractor {attractor}" for attractor in sorted_attractors[:5]], rotation=45, fontsize=18)
     ax.set_xlabel("Attractors", fontsize=18)
@@ -508,71 +588,62 @@ def main():
     plt.savefig("Figure2C.png", dpi=300, bbox_inches='tight')
     plt.show()
 
-    # Figure 2D: Heatmap - FIXED VERSION
+    # Figure 2D: Heatmap
     state_genes = {}
     with open("Combined_Unique_States.txt", 'r') as f:
         for line in f:
             key, value = line.strip().split(':')
-            state_genes[int(key.split()[1])] = np.array(list(map(int, value.strip().strip('[]').replace('(', '').replace(')', '').split(','))))
-            # Read gene names from cell trajectory file
-    current_dir = r"C:\Users\plwin\MayTrajectory_MDataRuns_MultipleTrajectoryRuns\T_cells_all_July_2025\scBONITA_output\trajectories\tutorial_dataset_hsa05417\text_files\cell_trajectories"
-    print(f"Current directory: {current_dir}")
-    cell_trajectory_path = os.path.join(current_dir, "cell_1_trajectory.csv")
-    if not os.path.exists(cell_trajectory_path):
-        parent_dir = os.path.dirname(current_dir)
-        cell_trajectory_path = os.path.join(parent_dir, "cell_1_trajectory.csv")
-        if not os.path.exists(cell_trajectory_path):
-            raise FileNotFoundError("cell_1_trajectory not found in current or parent directory.")
-    
-    with open(cell_trajectory_path, 'r') as f:
-        lines = f.readlines()
-        gene_names_list = [line.strip().split(',')[0] for line in lines]
-    
+            state_genes[int(key.split()[1])] = np.array(
+                list(map(int, value.strip().strip('[]').replace('(', '').replace(')', '').split(','))))
+
+    # Find any trajectory file to read gene names from (barcode-named)
+    cell_trajectories_dir = INPUT_FILES["cell_trajectories_dir"]
+    gene_names_list = []
+    for fname in os.listdir(cell_trajectories_dir):
+        if fname.startswith("cell_") and fname.endswith("_trajectory.csv"):
+            cell_trajectory_path = os.path.join(cell_trajectories_dir, fname)
+            with open(cell_trajectory_path, 'r') as f:
+                gene_names_list = [line.strip().split(',')[0] for line in f.readlines()]
+            print(f"Read gene names from: {fname}")
+            break
+
+    if not gene_names_list:
+        raise FileNotFoundError("No trajectory CSV files found to read gene names from.")
+
     print(f"Total genes in gene_names_list: {len(gene_names_list)}")
-    
-    # Create heatmap for genes that are ON in at least one of top 5 attractors
+
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111)
-    
-    # Build matrix for top 5 attractors: columns = attractors, rows = all genes
+
     num_genes_total = len(gene_names_list)
     attractor_gene_matrix = np.zeros((num_genes_total, 5), dtype=int)
-    
+
     for col_idx, attractor in enumerate(sorted_attractors[:5]):
         if attractor in state_genes:
             state_vector = state_genes[attractor]
-            # Copy the state vector values to the column
-            # Make sure we don't go out of bounds
             copy_length = min(len(state_vector), num_genes_total)
             attractor_gene_matrix[:copy_length, col_idx] = state_vector[:copy_length]
-    
-    # Filter to only show genes that are ON (=1) in at least one attractor
+
     genes_on_mask = np.any(attractor_gene_matrix == 1, axis=1)
     filtered_matrix = attractor_gene_matrix[genes_on_mask]
     filtered_gene_names = [gene_names_list[i] for i in range(len(gene_names_list)) if genes_on_mask[i]]
-    
+
     print(f"Number of genes that are ON in at least one of top 5 attractors: {len(filtered_gene_names)}")
-    
-    # Limit to top 100 genes for visualization
+
     if len(filtered_gene_names) > 100:
         filtered_matrix = filtered_matrix[:100]
         filtered_gene_names = filtered_gene_names[:100]
-    
-    # Create colormap
+
     set1_colors = sns.color_palette("Set1", 10)
     cmap_heatmap = ListedColormap([set1_colors[8], set1_colors[1]])
     bounds = [-0.5, 0.5, 1.5]
     norm_heatmap = plt.cm.colors.BoundaryNorm(bounds, cmap_heatmap.N)
-    
-    # Plot heatmap (transpose to have genes as rows, attractors as columns)
+
     im = ax.imshow(filtered_matrix, cmap=cmap_heatmap, norm=norm_heatmap, aspect='auto')
-    
-    # Set x-axis labels (attractors)
     ax.set_xticks(range(5))
     ax.set_xticklabels([f"Attractor {attractor}" for attractor in sorted_attractors[:5]], rotation=45, fontsize=18)
     ax.set_xlabel("Attractors", fontsize=18)
-    
-    # Set y-axis labels (genes with importance scores)
+
     gene_labels_with_scores = []
     for gene in filtered_gene_names:
         if gene in gene_names:
@@ -580,30 +651,27 @@ def main():
             gene_labels_with_scores.append(f"{gene} ({score:.2f})")
         else:
             gene_labels_with_scores.append(gene)
-    
+
     ax.set_yticks(range(len(filtered_gene_names)))
     ax.set_yticklabels(gene_labels_with_scores, fontsize=10)
     ax.set_ylabel("Selected genes with respective importance scores", fontsize=18)
-    
-    # Add black borders around cells
+
     for (i, j), val in np.ndenumerate(filtered_matrix):
         ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False, edgecolor='black', lw=2))
-    
-    # Add legend
+
     legend_elements = [
         Patch(facecolor=set1_colors[8], edgecolor='black', label='Off'),
         Patch(facecolor=set1_colors[1], edgecolor='black', label='On')
     ]
     ax.legend(handles=legend_elements, loc='upper right', fontsize=18)
-    
-    # Set spine linewidth
+
     for spine in ax.spines.values():
         spine.set_linewidth(2)
-    
+
     plt.tight_layout()
     plt.savefig("Figure2D.png", dpi=300, bbox_inches='tight')
     plt.show()
-    
+
     print(f"Genes shown in Figure 2D: {filtered_gene_names}")
 
     # Figure 2B: State transition graph for 60th attractor
@@ -616,67 +684,63 @@ def main():
         for traj in attractor_trajs:
             for i in range(len(traj) - 1):
                 G_attractor.add_edge(traj[i], traj[i + 1])
-        
+
         if len(G_attractor) > 0:
             plt.figure(figsize=(20, 20))
             pos = nx.kamada_kawai_layout(G_attractor)
             pos = jitter_positions(pos, jitter=0.15, min_dist=0.08, max_iter=200)
             labels = {node: f"S{node}" for node in G_attractor.nodes()}
-            nx.draw(
-                G_attractor, pos=pos, with_labels=True, labels=labels, node_size=20000,
-                node_color=attractor_color, edge_color='gray', font_size=50,
-                font_color='white', arrows=True, node_shape='s', width=7)
+            nx.draw(G_attractor, pos=pos, with_labels=True, labels=labels, node_size=20000,
+                    node_color=attractor_color, edge_color='gray', font_size=50,
+                    font_color='white', arrows=True, node_shape='s', width=7)
             plt.axis('equal')
             plt.axis('off')
             plt.tight_layout()
             plt.savefig("Figure2B.png", dpi=300, bbox_inches='tight')
             plt.show()
 
-    # Pseudotime calculations - Simple version (for backward compatibility)
+    # Pseudotime calculations
     steps_to_attractor = {state: ((len(clean_trajectory(trajectory)) - clean_trajectory(trajectory).index(state)) - 1)
                           for trajectory in cleaned_trajectories.values()
                           for state in clean_trajectory(trajectory)
                           if state in clean_trajectory(trajectory) and len(clean_trajectory(trajectory)) > 1}
-    
+
     normalized_steps_to_attractor = {state: ((len(clean_trajectory(trajectory)) - clean_trajectory(trajectory).index(state)) - 1) / len(clean_trajectory(trajectory))
-                                     for trajectory in cleaned_trajectories.values()
-                                     for state in clean_trajectory(trajectory)
-                                     if state in clean_trajectory(trajectory) and len(clean_trajectory(trajectory)) > 1}
-    
+                                      for trajectory in cleaned_trajectories.values()
+                                      for state in clean_trajectory(trajectory)
+                                      if state in clean_trajectory(trajectory) and len(clean_trajectory(trajectory)) > 1}
+
     with open("report_steps_to_attractor.txt", "w") as f:
         for state, steps in steps_to_attractor.items():
             f.write(f"State {state}: Steps to Attractor: {steps}\n")
-    
+
     with open("report_normalized_steps.txt", "w") as f:
         for state, steps in normalized_steps_to_attractor.items():
             f.write(f"State {state}: Normalized Steps to Attractor: {steps}\n")
-    
-    # Compute weighted pseudotime using the sophisticated algorithm
+
+    # Compute weighted pseudotime
     print("Computing weighted pseudotime and dissimilarity matrix...")
     weighted_pseudotime_dict, dissimilarity_matrix = compute_weighted_pseudotime(cleaned_trajectories, attractor_value_dict)
-    
-    # Save weighted pseudotime outputs as pkl files
+
     with open("weighted_pseudotime_dict.pkl", 'wb') as f:
         pickle.dump(weighted_pseudotime_dict, f)
     print("Saved weighted_pseudotime_dict.pkl")
-    
+
     with open("dissimilarity_matrix.pkl", 'wb') as f:
         pickle.dump(dissimilarity_matrix, f)
     print("Saved dissimilarity_matrix.pkl")
-    
-    # Also save as text files for easy inspection
+
     with open("weighted_pseudotime_dict.txt", 'w') as f:
         for cell, pseudotime in sorted(weighted_pseudotime_dict.items()):
             f.write(f"{cell}: {pseudotime:.6f}\n")
-    
+
     with open("dissimilarity_matrix_info.txt", 'w') as f:
         f.write(f"Dissimilarity Matrix Shape: {dissimilarity_matrix.shape}\n")
         f.write(f"Min value: {dissimilarity_matrix.min():.6f}\n")
         f.write(f"Max value: {dissimilarity_matrix.max():.6f}\n")
         f.write(f"Mean value: {dissimilarity_matrix.mean():.6f}\n")
-    
-    # Create state-level pseudotime mapping from weighted cell pseudotime
-    # For each state, compute average pseudotime from all cells that pass through it
+
+    # State-level pseudotime mapping
     state_weighted_pseudotime = {}
     for state_label in state_labels:
         state_num = int(state_label.split()[1])
@@ -686,55 +750,44 @@ def main():
             state_weighted_pseudotime[state_num] = avg_pseudotime
         else:
             state_weighted_pseudotime[state_num] = 0
-    
-    # Use weighted pseudotime for visualization
+
     state_vector_with_pseudotime = np.array([
         np.array(unique_states[i]) * state_weighted_pseudotime.get(int(state_labels[i].split()[1]), 0)
         for i in range(len(unique_states))
     ])
-    
-    print(f"Weighted pseudotime range: {min(weighted_pseudotime_dict.values()):.4f} to {max(weighted_pseudotime_dict.values()):.4f}")
-    
-    tsne_results = plot_tsne(state_vector_with_pseudotime, "t-SNE Plot of Unique States with Weighted Pseudotime", "t-SNE_Plot_Colored_with_Pseudotime.png", marker='s')
-    
-    # Figure 2E: 3D t-SNE plot with transitions
-    fig = plt.figure(figsize=(12, 10))
-    tsne_3d = TSNE(n_components=3, random_state=42, perplexity=min(30, len(unique_states)-1), 
-                   n_iter=1000, learning_rate=200, early_exaggeration=12.0)
-    
-    tsne_results_3d = tsne_3d.fit_transform(state_vector_with_pseudotime)
 
-    # APPLY THE SPREAD FACTOR
+    print(f"Weighted pseudotime range: {min(weighted_pseudotime_dict.values()):.4f} to {max(weighted_pseudotime_dict.values()):.4f}")
+
+    tsne_results = plot_tsne(state_vector_with_pseudotime, "t-SNE Plot of Unique States with Weighted Pseudotime",
+                             "t-SNE_Plot_Colored_with_Pseudotime.png", marker='s')
+
+    # Figure 2E: 3D t-SNE
+    fig = plt.figure(figsize=(12, 10))
+    tsne_3d = TSNE(n_components=3, random_state=42, perplexity=min(30, len(unique_states) - 1),
+                   n_iter=1000, learning_rate=200, early_exaggeration=12.0)
+    tsne_results_3d = tsne_3d.fit_transform(state_vector_with_pseudotime)
     spread_factor = 5.0
     tsne_results_3d = tsne_results_3d * spread_factor
-    
-    # Debug: Print state information
+
     print(f"Total unique states: {len(state_labels)}")
     print(f"State labels sample: {state_labels[:10]}")
-    
-    # Check for states in trajectories that might not be in state_labels
+
     all_traj_states = set()
     for traj in cleaned_trajectories.values():
         all_traj_states.update(traj)
-    
     state_numbers_in_labels = {int(s.split()[1]) for s in state_labels}
     missing_states = all_traj_states - state_numbers_in_labels
-    
     if missing_states:
         print(f"Warning: {len(missing_states)} states in trajectories are not in state_labels: {sorted(missing_states)}")
-    
+
     ax = fig.add_subplot(111, projection='3d')
-    
-    # Plot states colored by weighted pseudotime
     for i, state in enumerate(state_labels):
         state_index = int(state.split()[1])
-        # Use weighted pseudotime for coloring
         pseudotime_value = state_weighted_pseudotime.get(state_index, 0)
         color = plt.cm.coolwarm(pseudotime_value)
-        ax.scatter(tsne_results_3d[i, 0], tsne_results_3d[i, 1], tsne_results_3d[i, 2], 
+        ax.scatter(tsne_results_3d[i, 0], tsne_results_3d[i, 1], tsne_results_3d[i, 2],
                    color=color, alpha=1, label=f"State {state_index}", marker='s', edgecolors='none', s=100)
-    
-    # Set axis limits
+
     x_min, x_max = np.min(tsne_results_3d[:, 0]), np.max(tsne_results_3d[:, 0])
     y_min, y_max = np.min(tsne_results_3d[:, 1]), np.max(tsne_results_3d[:, 1])
     z_min, z_max = np.min(tsne_results_3d[:, 2]), np.max(tsne_results_3d[:, 2])
@@ -742,151 +795,95 @@ def main():
     ax.set_ylim(y_min, y_max)
     ax.set_zlim(z_min, z_max)
 
-    # FIXED: Set tick positions and labels correctly
     x_ticks = np.arange(int(x_min), int(x_max) + 1, 50)
     y_ticks = np.arange(int(y_min), int(y_max) + 1, 50)
     z_ticks = np.arange(int(z_min), int(z_max) + 1, 50)
-    
     ax.set_xticks(x_ticks)
     ax.set_yticks(y_ticks)
     ax.set_zticks(z_ticks)
-    
     ax.set_xticklabels([f'{int(x)}' for x in x_ticks], fontsize=12)
     ax.set_yticklabels([f'{int(y)}' for y in y_ticks], fontsize=12)
     ax.set_zticklabels([f'{int(z)}' for z in z_ticks], fontsize=12)
-
     ax.view_init(elev=15, azim=-20)
-    
-    # Create state index mapping for transition vectors
+
     state_idx_map = {int(s.split()[1]): idx for idx, s in enumerate(state_labels)}
 
-    # Add transition vectors with error handling
     if cleaned_trajectories:
         for traj in cleaned_trajectories.values():
             for i in range(len(traj) - 1):
                 s1 = traj[i]
                 s2 = traj[i + 1]
-                # Check if both states exist in the mapping
                 if s1 in state_idx_map and s2 in state_idx_map:
                     idx1 = state_idx_map[s1]
                     idx2 = state_idx_map[s2]
-                    # Verify indices are within bounds
                     if 0 <= idx1 < len(tsne_results_3d) and 0 <= idx2 < len(tsne_results_3d):
                         start = tsne_results_3d[idx1]
                         end = tsne_results_3d[idx2]
                         vector = end - start
                         ax.quiver(start[0], start[1], start[2],
-                                  vector[0], vector[1], vector[2], 
-                                  length=8.0,   
-                                  color='grey', alpha=0.5, arrow_length_ratio=2, linewidth=2,
-                                  normalize=True)
-                else:
-                    # Log missing states for debugging
-                    if s1 not in state_idx_map:
-                        print(f"Warning: State {s1} not found in state_idx_map")
-                    if s2 not in state_idx_map:
-                        print(f"Warning: State {s2} not found in state_idx_map")
-    
-    # Set pane linewidths for 3D axes
+                                  vector[0], vector[1], vector[2],
+                                  length=8.0, color='grey', alpha=0.5,
+                                  arrow_length_ratio=2, linewidth=2, normalize=True)
+
     try:
-        ax.xaxis.set_pane_linewidth(4)
-        ax.yaxis.set_pane_linewidth(4)
-        ax.zaxis.set_pane_linewidth(4)
-    except AttributeError:
-        try:
-            ax.xaxis.pane.set_linewidth(4)
-            ax.yaxis.pane.set_linewidth(4)
-            ax.zaxis.pane.set_linewidth(4)
-        except Exception:
-            pass
+        ax.xaxis.pane.set_linewidth(4)
+        ax.yaxis.pane.set_linewidth(4)
+        ax.zaxis.pane.set_linewidth(4)
+    except Exception:
+        pass
 
-    for axis in [ax.w_xaxis, ax.w_yaxis, ax.w_zaxis] if hasattr(ax, 'w_xaxis') else [ax.xaxis, ax.yaxis, ax.zaxis]:
-        try:
-            axis.line.set_linewidth(2)
-        except AttributeError:
-            try:
-                axis.pane.set_linewidth(2)
-            except Exception:
-                pass
-
-    for line in ax.get_lines():
-        line.set_linewidth(2)
-    
     ax.set_xlabel("t-SNE Component 1", fontsize=18, labelpad=15)
     ax.set_ylabel("t-SNE Component 2", fontsize=18, labelpad=15)
     ax.set_zlabel("t-SNE Component 3", fontsize=18, labelpad=15)
-    
     ax.tick_params(axis='both', which='major', labelsize=18)
     ax.tick_params(axis='z', which='major', labelsize=18)
     plt.tight_layout()
-    
-    # Add colorbar
+
     sm = plt.cm.ScalarMappable(cmap='coolwarm', norm=plt.Normalize(vmin=0, vmax=1))
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, label="Weighted Pseudotime", shrink=0.5)
     cbar.ax.tick_params(labelsize=18)
     cbar.set_label("Weighted Pseudotime", fontsize=18)
-    
     plt.savefig("Figure2E.png", dpi=300, bbox_inches='tight')
     plt.show()
 
     # Combine all figures into one panel
-    images = [
-        "Figure2ANetwork.png",
-        "Figure2B.png",
-        "Figure2C.png",
-        "Figure2D.png",
-        "Figure2E.png"
-    ]
-
+    images = ["Figure2ANetwork.png", "Figure2B.png", "Figure2C.png", "Figure2D.png", "Figure2E.png"]
     img_data = [mpimg.imread(f) for f in images]
     labels = ["a.", "b.", "c.", "d.", "e."]
 
     fig = plt.figure(figsize=(12, 16))
     gs = GridSpec(3, 2, figure=fig, hspace=0, wspace=0)
 
-    # First 4 images (2x2 grid)
     for i in range(4):
         row = i // 2
         col = i % 2
         ax = fig.add_subplot(gs[row, col])
         ax.imshow(img_data[i])
         ax.axis('off')
-
-        # Label placement logic
-        if i == 1:  # second image, special label position
-            ax.text(
-                0.03, 0.98, labels[i], transform=ax.transAxes,
-                fontsize=20, fontweight='bold', color='black',
-                ha='left', va='top',
-                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=2)
-            )
+        if i == 1:
+            ax.text(0.03, 0.98, labels[i], transform=ax.transAxes, fontsize=20, fontweight='bold',
+                    color='black', ha='left', va='top',
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=2))
         else:
-            ax.text(
-                0.03, 1.1, labels[i], transform=ax.transAxes,
-                fontsize=20, fontweight='bold', color='black',
-                ha='left', va='top',
-                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=2)
-            )
+            ax.text(0.03, 1.1, labels[i], transform=ax.transAxes, fontsize=20, fontweight='bold',
+                    color='black', ha='left', va='top',
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=2))
 
-    # Last image spans both columns
     ax5 = fig.add_subplot(gs[2, :])
     ax5.imshow(img_data[4])
     ax5.axis('off')
-    ax5.text(
-        0.03, 0.88, labels[4], transform=ax5.transAxes,
-        fontsize=20, fontweight='bold', color='black',
-        ha='left', va='top',
-        bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=2)
-    )
+    ax5.text(0.03, 0.88, labels[4], transform=ax5.transAxes, fontsize=20, fontweight='bold',
+             color='black', ha='left', va='top',
+             bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=2))
 
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0, hspace=0, wspace=0)
     plt.margins(0)
     plt.savefig("Figure2_Combined.png", dpi=300, bbox_inches='tight', pad_inches=0)
     plt.show()
-    
+
     print("Analysis complete! All figures generated.")
 
-# Run the main function
+
 if __name__ == "__main__":
     main()
