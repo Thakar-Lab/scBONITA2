@@ -233,10 +233,10 @@ def main():
     print("=" * 50)
     print("Trajectory Analysis")
     print("=" * 50)
-    
-    # Set input directory here
-    input_dir = Path(r"C:\Users\plwin\scBONITA2_accelerated_PL\2025PastRuns\scBONITA_output\trajectories\tutorial_dataset_hsaRWNetworknew.graphml\text_files\cell_trajectories")
-    
+
+    # Use the directory where this script lives
+    input_dir = Path(__file__).resolve().parent
+
     if not input_dir.exists():
         print(f"Error: Directory '{input_dir}' does not exist.")
         return
@@ -280,4 +280,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
