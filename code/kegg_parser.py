@@ -223,6 +223,7 @@ class Pathways:
 
             # Map the id of the entry to the entry name
             id_to_name[entry_id] = entry_name
+            # logging.info(f'Entry name: {entry_name} ID: {entry_id}')
 
             # If the entry is a pathway, store the pathway name
             if entry_type == "path":
@@ -296,6 +297,8 @@ class Pathways:
             for (entry1, entry2) in itertools.product(entry1_list, entry2_list):
                 node1 = id_to_name[entry1]
                 node2 = id_to_name[entry2]
+                # if (node1.count('-') < 10 or node2.count('-') < 10):
+                #     logging.info(f'{node1} --- {signal} ---> {node2}\n\t{"/".join(subtypes)}')
                 graph.add_edge(
                     node1,
                     node2,
@@ -304,6 +307,198 @@ class Pathways:
                     type=relation_type,
                     signal=signal,
                 )
+        
+        # ------------------ UNCOMMENTING THE FOLLOWING LOADS ALL REFERENCED SUBGRAPHS, WORK IN PROGRESS -------------------------------
+        # logging.info(f'Subpaths:')
+        # for path_name in subpaths:
+        #     logging.info(f'\t{path_name}')
+
+        # num_pathways = len(subpaths)
+        # for pathway_num, pathway in enumerate(subpaths):
+        #     for xml_file in os.listdir(f'{file_paths["pathway_xml_files"]}/{self.organism}'):
+        #         xml_pathway_name = xml_file.split('.')[0]
+        #         if pathway == xml_pathway_name:
+        #             with open(f'{file_paths["pathway_xml_files"]}/{self.organism}/{xml_file}', 'r') as pathway_file:
+        #                 text = [line for line in pathway_file]
+        #             soup = BeautifulSoup("".join(text), "xml")
+        #             for entry in soup.find_all("entry"):
+        #                 # logging.info(f'\nEntry:')
+        #                 # logging.info(f'\t{entry}')
+
+        #                 # Name of each gene in the entry
+        #                 # If there are multiple genes in the entry, store them all with the same id
+        #                 entry_split = entry["name"].split(":")
+
+        #                 # logging.info(f'\tentry_split: {entry_split}')
+        #                 # logging.info(f'\tlen(entry_split) : {len(entry_split)}')
+        #                 # If the entry is part of a group (in the network coded by a group containing lots of related genes)
+        #                 if len(entry_split) > 2:
+
+        #                     # Choose which dictionary to use based on whether the entries are hsa or kegg elements
+        #                     # Entries with hsa correspond to genes, entries with ko correspond to orthologs
+        #                     if entry_split[0] == "hsa" or entry_split[0] == "ko":
+        #                         if entry_split[0] == "hsa":
+        #                             useDict = hsaDict
+        #                         elif entry_split[0] == "ko":
+        #                             useDict = KEGGdict
+        #                         nameList = []
+                                
+        #                         # Split off the first name
+        #                         entry_name = ""
+        #                         namer = entry_split.pop(0)
+        #                         namer = entry_split.pop(0)
+        #                         namer = namer.split()[0]
+
+        #                         # Either use the dictionary name for the key or use the name directly if its not in the dictionary
+        #                         entry_name = (
+        #                             entry_name + useDict[namer]
+        #                             if namer in useDict.keys()
+        #                             else entry_name + namer
+        #                         )
+
+        #                         # Append each gene name to the list ([gene1, gene2])
+        #                         for i in range(len(entry_split)):
+        #                             nameList.append(entry_split[i].split()[0])
+
+        #                         # For each of the gene names, separate them with a "-" (gene1-gene2)
+        #                         for namer in nameList:
+        #                             entry_name = (
+        #                                 entry_name + "-" + useDict[namer]
+        #                                 if namer in useDict.keys()
+        #                                 else entry_name + "-" + namer
+        #                             )
+        #                         entry_type = entry["type"]
+        #                     else:
+        #                         entry_name = entry["name"]
+        #                         entry_type = entry["type"]
+                        
+        #                 # If there is only one name
+        #                 else:
+        #                     # If the name is hsa
+        #                     if entry_split[0] == "hsa":
+        #                         entry_name = entry_split[1] # Get the entry number
+        #                         entry_type = entry["type"] # Get the entry type
+        #                         entry_name = ( # Get the gene name from the entry number if its in the hsa gene name dict
+        #                             hsaDict[entry_name] if entry_name in hsaDict.keys() else entry_name
+        #                         )
+        #                     # If the name is ko, do the same as above but use the KEGGdict instead of the hsa gene name dict
+        #                     elif entry_split[0] == "ko":
+        #                         entry_name = entry_split[1]
+        #                         entry_type = entry["type"]
+        #                         entry_name = (
+        #                             KEGGdict[entry_name]
+        #                             if entry_name in KEGGdict.keys()
+        #                             else entry_name
+        #                         )
+        #                     # If the entry is another KEGG pathway number, store the name of the signaling pathway
+        #                     elif entry_split[0] == "path":
+        #                         entry_name = entry_split[1]
+        #                         entry_type = "path"
+        #                     # If none of the above, just store the name and type
+        #                     else:
+        #                         entry_name = entry["name"]
+        #                         entry_type = entry["type"]
+                        
+        #                 # Get the unique entry ID for this pathway
+        #                 entry_id = entry["id"]
+
+        #                 # Some genes will have ',' at the end if there were more than one gene, remove that
+        #                 entry_name = re.sub(",", "", entry_name)
+
+        #                 # Map the id of the entry to the entry name
+        #                 id_to_name[entry_id] = entry_name
+        #                 # logging.info(f'Entry name: {entry_name} ID: {entry_id}')
+
+        #                 # # If the entry is a pathway, store the pathway name
+        #                 # if entry_type == "path":
+        #                 #     if entry_name not in subpaths:
+        #                 #         subpaths.append(entry_name)
+                            
+
+        #                 # If the entry type is a gene group, find all component ids and add them to the id dictionary for the entry
+        #                 if entry_type == "group":
+        #                     group_ids = []
+        #                     for component in entry.find_all("component"):
+        #                         group_ids.append(component["id"])
+        #                     groups[entry_id] = group_ids
+                        
+        #                 # If the entry is not a group, add its attributes to the graph
+        #                 else:
+        #                     graph.add_node(entry_name, name=entry_name, type=entry_type)
+
+        #             # For each of the relationships
+        #             for relation in soup.find_all("relation"):
+        #                 # logging.info(f'Relation:')
+        #                 # logging.info(f'\t{relation}')
+        #                 (color, signal) = ("black", "a")
+
+        #                 relation_entry1 = relation["entry1"] # Upstream node
+        #                 relation_entry2 = relation["entry2"] # Target node
+        #                 relation_type = relation["type"] # Type of relationship (PPel, GEcrel, etc.)
+                
+        #                 subtypes = []
+
+        #                 # Relationship subtypes tell you about whats going on
+        #                 for subtype in relation.find_all("subtype"):
+        #                     subtypes.append(subtype["name"])
+                
+        #                 if (
+        #                     ("activation" in subtypes)
+        #                     or ("expression" in subtypes)
+        #                     or ("glycosylation" in subtypes)
+        #                 ):
+        #                     color = "green"
+        #                     signal = "a"
+        #                 elif ("inhibition" in subtypes) or ("repression" in subtypes):
+        #                     color = "red"
+        #                     signal = "i"
+        #                 elif ("binding/association" in subtypes) or ("compound" in subtypes):
+        #                     color = "purple"
+        #                     signal = "a"
+        #                 elif "phosphorylation" in subtypes:
+        #                     color = "orange"
+        #                     signal = "a"
+        #                 elif "dephosphorylation" in subtypes:
+        #                     color = "pink"
+        #                     signal = "i"
+        #                 elif "indirect effect" in subtypes:
+        #                     color = "cyan"
+        #                     signal = "a"
+        #                 elif "dissociation" in subtypes:
+        #                     color = "yellow"
+        #                     signal = "i"
+        #                 elif "ubiquitination" in subtypes:
+        #                     color = "cyan"
+        #                     signal = "i"
+        #                 else:
+        #                     logging.debug("color not detected. Signal assigned to activation arbitrarily")
+        #                     logging.debug(subtypes)
+        #                     signal = "a"
+
+        #                 # For entries that are a group of genes, get a list of all of the sub-id's in that group
+        #                 entry1_list = self.expand_groups(relation_entry1, groups)
+        #                 entry2_list = self.expand_groups(relation_entry2, groups)
+
+        #                 # Find all connections between objects in the groups and add them to the grapgh
+        #                 for (entry1, entry2) in itertools.product(entry1_list, entry2_list):
+        #                     node1 = id_to_name[entry1]
+        #                     node2 = id_to_name[entry2]
+        #                     # if (node1.count('-') < 10 or node2.count('-') < 10):
+        #                     # logging.info(f'{node1} --- {signal} ---> {node2}\n\t{"/".join(subtypes)}')
+        #                     graph.add_edge(
+        #                         node1,
+        #                         node2,
+        #                         color=color,
+        #                         subtype="/".join(subtypes),
+        #                         type=relation_type,
+        #                         signal=signal,
+        #                     )
+
+
+        ### --------------------------------------------------------------------------------------------------
+
+
+        # self.add_pathways(subpath_graphs, minOverlap=25, organism=self.organism)
 
         return graph
     
@@ -551,10 +746,9 @@ class Pathways:
         
         return self.pathway_dict
 
-    def add_pathways(self, pathway_list, minOverlap, write_graphml=True, removeSelfEdges=False, organism='hsa', skip_filtering=False):
+    def add_pathways(self, pathway_list, minOverlap, write_graphml=True, removeSelfEdges=False, organism='hsa'):
         """
         Add a list of pathways in graphml format to the rule_inference object
-        Add skip_filtering=True to preserve all nodes in custom networks without filtering
 
         Writes out the "_processed.graphml" files
         """
@@ -570,24 +764,15 @@ class Pathways:
 
             Creates the "_processed.graphml" files
             """
-            # ========== DIAGNOSTIC 1: Before any processing ==========
-            logging.info(f'\n{"="*80}')
-            logging.info(f'PROCESSING PATHWAY: {pathway}')
-            logging.info(f'{"="*80}')
-            logging.info(f'Input graph: {len(G.nodes())} nodes, {len(G.edges())} edges')
-            logging.info(f'First 10 input nodes: {list(G.nodes())[:10]}')
-            
             nodes = set(G.nodes())
 
             # Compute the number of nodes that overlap with the pathway genes
             overlap = len(nodes.intersection(pathway_genes))
-            logging.info(f'Overlap with CSV: {overlap} nodes ({overlap/len(G.nodes())*100:.1f}%)')
-            logging.info(f'Min overlap required: {minOverlap}')
 
             # Check to see if there are enough genes in the dataset that overlap with the genes in the pathway
             if overlap >= minOverlap:
 
-                logging.info(f'\t\tPathway: {pathway} meets minimum overlap requirement')
+                logging.info(f'\t\tPathway: {pathway} Overlap: {overlap} Edges: {len(G.edges())}')
                 nodes = list(G.nodes())
 
                 if removeSelfEdges:
@@ -618,13 +803,6 @@ class Pathways:
                     """
                     from collections import deque
 
-                    # ========== DIAGNOSTIC 2: Show what we're checking against ==========
-                    logging.info(f'\t\t\t=== GENE MATCHING DIAGNOSTICS ===')
-                    logging.info(f'\t\t\tGraph has {len(G.nodes())} nodes before filtering')
-                    logging.info(f'\t\t\tValid genes (from CSV): {len(valid_genes)} genes')
-                    logging.info(f'\t\t\tFirst 10 valid genes: {list(valid_genes)[:10]}')
-                    logging.info(f'\t\t\tFirst 10 graph nodes: {list(G.nodes())[:10]}')
-
                     def bfs_paths(start_node):
                         """Find all valid paths from start_node to valid gene through only invalid nodes."""
                         visited = set()
@@ -643,11 +821,9 @@ class Pathways:
                                     queue.append((neighbor, path + [current]))
 
                     nodes_to_remove = []
-                    nodes_to_keep = []
 
                     for node in list(G.nodes()):
                         if node not in valid_genes:
-                            nodes_to_remove.append(node)
                             preds = [p for p in G.predecessors(node) if p in valid_genes]
                             for pred in preds:
                                 for path in bfs_paths(node):
@@ -662,57 +838,18 @@ class Pathways:
                                                 prev = intermediate
                                         inferred_type = combine_interaction_types(edge_types)
                                         G.add_edge(pred, dst, type=inferred_type)
-                        else:
-                            nodes_to_keep.append(node)
-                    
-                    # ========== DIAGNOSTIC 3: Show matching results ==========
-                    logging.info(f'\t\t\t--- MATCHING RESULTS ---')
-                    logging.info(f'\t\t\tNodes matching CSV (to keep): {len(nodes_to_keep)}')
-                    logging.info(f'\t\t\tNodes NOT in CSV (to remove): {len(nodes_to_remove)}')
-                    if len(G.nodes()) > 0:
-                        logging.info(f'\t\t\tMatch percentage: {len(nodes_to_keep)/len(G.nodes())*100:.1f}%')
-                    
-                    if len(nodes_to_keep) > 0:
-                        logging.info(f'\t\t\tFirst 10 nodes to KEEP: {nodes_to_keep[:10]}')
-                    
-                    if len(nodes_to_remove) > 0:
-                        logging.info(f'\t\t\tFirst 10 nodes to REMOVE: {nodes_to_remove[:10]}')
-                        # Show all if 20 or fewer
-                        if len(nodes_to_remove) <= 20:
-                            logging.info(f'\t\t\tAll nodes to remove: {nodes_to_remove}')
-                    
-                    # ========== DIAGNOSTIC 4: Check for case/whitespace issues ==========
-                    if len(nodes_to_remove) > 0:
-                        valid_genes_lower = {g.lower() for g in valid_genes}
-                        case_matches = []
-                        for node in nodes_to_remove[:20]:  # Check first 20
-                            if node.lower() in valid_genes_lower:
-                                case_matches.append(node)
-                        
-                        if case_matches:
-                            logging.info(f'\t\t\t⚠ WARNING: {len(case_matches)} nodes would match if case-insensitive!')
-                            logging.info(f'\t\t\tExamples: {case_matches[:5]}')
-                    
+
+                            nodes_to_remove.append(node)
+
                     G.remove_nodes_from(nodes_to_remove)
-                    
-                    # ========== DIAGNOSTIC 5: Show final result ==========
-                    logging.info(f'\t\t\tGraph after filtering: {len(G.nodes())} nodes, {len(G.edges())} edges')
-                    logging.info(f'\t\t\t=== END DIAGNOSTICS ===\n')
-                    
                     return G
 
                 # Call the function to remove non-dataset nodes and preserve gene paths
-                if not skip_filtering:
-                    logging.info(f'\t\t\tFiltering nodes to match dataset genes...')
-                    G = preserve_gene_paths_and_remove_non_dataset_nodes(G, pathway_genes)
-                else:
-                    logging.info(f'\t\t\tSkipping node filtering (skip_filtering=True)')
+                G = preserve_gene_paths_and_remove_non_dataset_nodes(G, pathway_genes)
 
                 # graph post-processing
                 # remove singletons/isolates
-                isolates_before = len(list(nx.isolates(G)))
                 G.remove_nodes_from(list(nx.isolates(G)))
-                logging.info(f'\t\t\tRemoved {isolates_before} isolated nodes')
 
                 # Check the edge None Type or not
                 for edge in G.edges():
@@ -720,12 +857,11 @@ class Pathways:
                         G[edge[0]][edge[1]]['type'] = 'unknown'
 
                 self.pathway_graphs[pathway] = G
-                logging.info(f'\t\t\tFinal: {len(G.edges())} edges, {len(G.nodes())} nodes')
-                logging.info(f'{"="*80}\n')
+                logging.info(f'\t\t\tEdges after processing: {len(G.edges())} Overlap: {len(set(G.nodes()).intersection(pathway_genes))}')
                 filtered_overlap = len(set(G.nodes()).intersection(pathway_genes))
 
                 if write_graphml and filtered_overlap > minOverlap:
-                    # Start the output file path with the output path
+                    # Start the output file path with the otuput path
                     output_file_name = self.output_path
                     
                     # Add the organism to the pathway file if its not already there
@@ -748,10 +884,8 @@ class Pathways:
                 msg = f'Overlap {overlap} is below the minimum {minOverlap}'
                 raise Exception(msg)
 
-        # ========================================================================
-        # LOAD PATHWAYS FIRST - BEFORE COMBINING
-        # ========================================================================
-        # If pathway_list is a list (custom GraphML files)
+        # Create the "_processed.graphml" files
+        # If pathway_list is a list
         if isinstance(pathway_list, list):
             for pathway in pathway_list:  
                 if os.path.exists(pathway):
@@ -762,77 +896,9 @@ class Pathways:
                 create_processed_networkx_graphml(G, pathway)
                 
 
-        # If pathway_list is a dictionary (KEGG pathways)
+        # If pathway_list is a dictionary
         elif isinstance(pathway_list, dict):
-            for pathway, G in pathway_list.items():
-                create_processed_networkx_graphml(G, pathway)
+                for pathway, G in pathway_list.items():
+                    create_processed_networkx_graphml(G, pathway)
+        
 
-        # ========================================================================
-        # NOW COMBINE ALL LOADED PATHWAYS
-        # ========================================================================
-        # Option to combine all pathway graphs into one large network and process it
-        combine_networks = True  # Whether to combine networks or not
-        if combine_networks:
-            logging.info(f'\n{"="*80}')
-            logging.info(f'COMBINING PATHWAY GRAPHS')
-            logging.info(f'{"="*80}')
-            logging.info(f'\t\t\tPathways to combine: {list(self.pathway_graphs.keys())}')
-            
-            combined_graph = nx.DiGraph()
-            for pathway_name, G in self.pathway_graphs.items():
-                logging.info(f'\t\t\t  Adding {pathway_name}: {len(G.nodes())} nodes, {len(G.edges())} edges')
-                combined_graph = nx.compose(combined_graph, G)
-            
-            logging.info(f'\t\t\tCombined graph (before cleanup): {len(combined_graph.nodes())} nodes, {len(combined_graph.edges())} edges')
-            
-            removeSelfEdges = True  # Whether to remove self edges or not
-            # Remove self loops if requested
-            if removeSelfEdges:
-                self_loops = list(nx.selfloop_edges(combined_graph))
-                combined_graph.remove_edges_from(self_loops)
-                logging.info(f'\t\t\tRemoved {len(self_loops)} self-loops')
-            
-            # Function to retain only the largest weakly connected component in the graph
-            def remove_non_connected_nodes(G):
-                # Check if graph is empty
-                if len(G.nodes()) == 0:
-                    logging.warning("Graph is empty, no nodes to process")
-                    return G
-                
-                # Get weakly connected components
-                components = list(nx.weakly_connected_components(G))
-                
-                # Check if there are any components
-                if len(components) == 0:
-                    logging.warning("No connected components found")
-                    return G
-                
-                # Find the largest component
-                largest_component = max(components, key=len)
-                nodes_to_remove = set(G.nodes()) - largest_component
-                G.remove_nodes_from(nodes_to_remove)
-                
-                logging.info(f'\t\t\tRemoved {len(nodes_to_remove)} disconnected nodes')
-                return G
-            
-            # Remove isolated nodes and keep only largest component
-            isolated = list(nx.isolates(combined_graph))
-            combined_graph.remove_nodes_from(isolated)
-            logging.info(f'\t\t\tRemoved {len(isolated)} isolated nodes')
-            
-            combined_graph = remove_non_connected_nodes(combined_graph)
-            
-            # Set default edge type for edges without type attribute
-            for edge in combined_graph.edges():
-                if combined_graph[edge[0]][edge[1]].get('type') is None:
-                    combined_graph[edge[0]][edge[1]]['type'] = 'unknown'
-            
-            # Write out the combined processed graphml file
-            logging.info(f'\t\t\tCombined network has {len(combined_graph.nodes())} nodes and {len(combined_graph.edges())} edges.')
-            logging.info(f'{"="*80}\n')
-            
-            if write_graphml:
-                # Construct output file path
-                output_file_name = f"{self.output_path}{organism}_combined_processed.graphml"
-                nx.write_graphml(combined_graph, output_file_name, infer_numeric_types=True)
-                logging.info(f'\t\tCombined network written to {output_file_name}')

@@ -1,6 +1,5 @@
 from rule_inference import RuleInference
 from kegg_parser import Pathways
-from cell_class import CellPopulation
 from file_paths import file_paths
 
 # Setup
@@ -122,8 +121,7 @@ class Pipeline():
                 for node in graph.nodes():
                     node_indices.append(pathways.gene_list.index(node))
 
-                # node_indices = set(node_indices)  # Only keep unique values
-                self.node_indices = list(node_indices)  # Convert back to a list
+                self.node_indices = list(node_indices)
 
                 # Runs rule determination
                 self.infer_rules(pathway_num, graph, node_indices)
@@ -153,6 +151,11 @@ class Pipeline():
             self.binarize_threshold,
             self.sample_cells)
 
+        # Save cell_names and gene_names onto the ruleset object so downstream
+        # scripts (importance_score.py) can copy them onto the network pickle
+        ruleset.cell_names = list(ruleset.cell_names)
+        ruleset.gene_names = list(ruleset.gene_names)
+
         # Create the ruleset pickle files
         logging.info(f'\nRule inference complete, saving ruleset pickle file')
 
@@ -165,21 +168,12 @@ class Pipeline():
             data_pickle_file_path = f'{data_pickle_folder}/{self.dataset_name}_{pathway_num}.ruleset.pickle'
         logging.info(f'\tSaving to {data_pickle_file_path.split("/")[-1]}')
 
-        
         # Save the ruleset object as a binary pickle file
         pickle.dump(ruleset, open(data_pickle_file_path, "wb"))
 
-        # Write out the cells objects to a pickle file
-        logging.info(f'Saving cell population pickle file')
-        cell_population = CellPopulation(ruleset.cells)
-
-        # Specify the path to the cell pickle directory, ensures sure the directory exists
-        cell_pickle_dir = f'{file_paths["pickle_files"]}/{self.dataset_name}_pickle_files/cells_pickle_file'
-        os.makedirs(cell_pickle_dir, exist_ok=True)
-        cells_pickle_file = f'{self.dataset_name}.cells.pickle'
-
-        # Save the cell population object as a pickle file (used to simulate individual cells)
-        pickle.dump(cell_population, open(f'{cell_pickle_dir}/{cells_pickle_file}', "wb"))
+        # NOTE: cell population pickle removed - cell_names and gene_names are now
+        # stored directly on the ruleset object and will be copied to network pickle
+        # by importance_score.py
 
     def _convert_string_to_boolean(self, variable):
         if variable == "True" or variable is True:
@@ -189,4 +183,3 @@ class Pipeline():
 
 if __name__ == "__main__":
     Pipeline()
-

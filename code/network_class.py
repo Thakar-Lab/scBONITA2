@@ -9,6 +9,7 @@ class Network():
         self.cells = None
         self.network = None
         self.dataset = None
+        self.cell_names = None #Add by PTLM
 
         # Pathway information for the networks
         self.attractors = None

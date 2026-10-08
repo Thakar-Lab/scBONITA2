@@ -19,8 +19,8 @@ class CalculateImportanceScore():
     def __init__(self, nodes, binarized_matrix, network_name, dataset_name):
         self.binarized_matrix = binarized_matrix
         self.nodes = nodes
-        self.STEPS = 50
-        self.CELLS = 408
+        self.STEPS = 10
+        self.CELLS = 6390
         self.network_name = network_name
         self.dataset_name = dataset_name
 
@@ -388,6 +388,7 @@ def run_full_importance_score(dataset_name, network_names):
                 network.rulesets = ruleset.ruleset
                 network.network = ruleset.graph
                 network.dataset = ruleset.binarized_matrix
+                network.cell_names = ruleset.cell_names # needed by attractor_analysis.py - edit by PTLM
 
                 # Run the importance score calculation for that ruleset and network
                 logging.info(f'Calculating importance score for network {network_name}')

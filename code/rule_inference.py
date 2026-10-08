@@ -34,7 +34,7 @@ class RuleInference:
         self.dataset_name = dataset_name
         self.network_name = network_name
         self.binarize_threshold = binarize_threshold
-        self.max_samples = 1000
+        self.max_samples = 15000
         self.cells = []
 
         # Initialize lists to store information about nodes and connections
